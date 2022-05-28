@@ -6,6 +6,7 @@ import logging
 import time
 from dataclasses import dataclass
 from typing import List, Optional
+from typing_extensions import Self
 
 from aiofile import async_open
 from pydantic import BaseModel, Field
@@ -154,6 +155,7 @@ async def read_service_id_parameter_mappings():
         ) from exc
 
 
+
 class SimEVSEController(EVSEControllerInterface):
     """
     A simulated version of an EVSE controller
@@ -189,6 +191,9 @@ class SimEVSEController(EVSEControllerInterface):
             return "49A89A6360"
         """Overrides EVSEControllerInterface.get_evse_id()."""
         return "UK123E1234"
+
+
+
 
     def get_supported_energy_transfer_modes(
         self, protocol: Protocol
@@ -495,11 +500,14 @@ class SimEVSEController(EVSEControllerInterface):
 
     def close_contactor(self):
         """Overrides EVSEControllerInterface.close_contactor()."""
+        print("----------------------------------------------------")
         self.contactor = Contactor.CLOSED
 
     def open_contactor(self):
         """Overrides EVSEControllerInterface.open_contactor()."""
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++")
         self.contactor = Contactor.OPENED
+        
 
     def get_contactor_state(self) -> Contactor:
         """Overrides EVSEControllerInterface.get_contactor_state()."""
@@ -646,6 +654,9 @@ class SimEVSEController(EVSEControllerInterface):
                 multiplier=1, value=4, unit="A"
             ),
         )
+
+
+
 
     def get_evse_present_voltage(self) -> PVEVSEPresentVoltage:
         """Overrides EVSEControllerInterface.get_evse_present_voltage()."""

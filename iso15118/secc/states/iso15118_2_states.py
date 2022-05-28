@@ -1167,6 +1167,7 @@ class PowerDelivery(StateSECC):
 
         next_state: Type[State]
         if power_delivery_req.charge_progress == ChargeProgress.START:
+            print("//////////////////////////////////////")
             self.comm_session.evse_controller.set_hlc_charging(True)
             if self.comm_session.selected_charging_type_is_ac:
                 next_state = ChargingStatus
@@ -1532,6 +1533,9 @@ class CableCheck(StateSECC):
             return
 
         cable_check_req: CableCheckReq = msg.body.cable_check_req
+        print("///////////////////CABLE CHECK/////////////////////////")
+        print("{0}",cable_check_req)
+        print("///////////////////CABLE CHECK/////////////////////////")
         if cable_check_req.dc_ev_status.ev_error_code != DCEVErrorCode.NO_ERROR:
             self.stop_state_machine(
                 f"{cable_check_req.dc_ev_status} "
@@ -1714,6 +1718,9 @@ class CurrentDemand(StateSECC):
             return
 
         current_demand_req: CurrentDemandReq = msg.body.current_demand_req
+        print("////////////////CURRENT DEMAND/////////////////")
+        print(f"dc_ev_status={0}",current_demand_req)
+        print("////////////////CURRENT DEMAND/////////////////")
 
         self.comm_session.evse_controller.ev_data_context.soc = (
             current_demand_req.dc_ev_status.ev_ress_soc
