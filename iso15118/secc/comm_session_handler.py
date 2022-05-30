@@ -13,11 +13,12 @@ at once, i.e. creating, storing, and deleting those sessions as needed.
 import asyncio
 import logging
 import socket
+import time
 from asyncio.streams import StreamReader, StreamWriter
 from typing import Dict, List, Optional, Tuple, Union
 
 from iso15118.secc.states.cp_handler import (
-    check_cp, CP
+    check_cp
 )
 from iso15118.secc.controller.interface import EVSEControllerInterface
 from iso15118.secc.failed_responses import (
@@ -324,16 +325,9 @@ class CommunicationSessionHandler:
 
         self.udp_server.send(v2gtp_msg, message.addr)
 
-    @staticmethod
-    async def is_cp_ok() -> bool:
-        if check_cp == CP.D:
-            logger.warning("CP is set to D, no communication possible")
-            return False
-        if check_cp == CP.B:
-            logger.warning("CP is set to B, communication possible")
-            return True
-        logger.warning("CP is set to unknown value, no communication possible")
-        return False
+    async def is_cp_ok(self) -> int:
+        logger.info("CP is " + str( await check_cp()))
+        return await check_cp()
 
     async def restart_session_handler(self):
         """
@@ -342,5 +336,5 @@ class CommunicationSessionHandler:
         Therefore, we need to create a separate async method to be our
         constructor.
         """
+        time.sleep(0.1)
         logger.info("Session handler restarted")
-        await self.start_session_handler()

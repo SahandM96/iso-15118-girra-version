@@ -1,4 +1,5 @@
 import logging
+import time
 from optparse import Option
 from typing import Optional
 
@@ -14,10 +15,10 @@ logger = logging.getLogger(__name__)
 
 class SECCHandler(CommunicationSessionHandler):
     def __init__(
-        self,
-        exi_codec: IEXICodec,
-        evse_controller: EVSEControllerInterface,
-        env_path: Optional[str] = None,
+            self,
+            exi_codec: IEXICodec,
+            evse_controller: EVSEControllerInterface,
+            env_path: Optional[str] = None,
     ):
         config = Config()
         config.load_envs(env_path)
@@ -30,11 +31,16 @@ class SECCHandler(CommunicationSessionHandler):
 
     async def start(self):
         try:
-            if await self.is_cp_ok():
-                await self.start_session_handler()
-            await self.restart_session_handler()
+            await self.try_to_strat()
         except Exception as exc:
             logger.error(f"SECC terminated: {exc}")
             # Re-raise so the process ends with a non-zero exit code and the
             # watchdog can restart the service
             raise
+
+    async def try_to_strat(self):
+        while True:
+            if await self.is_cp_ok() == 150:
+                await self.start_session_handler()
+            else:
+                await self.restart_session_handler()
