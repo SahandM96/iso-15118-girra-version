@@ -141,7 +141,8 @@ class SECCCommunicationSession(V2GCommunicationSession):
         """
         _, writer = transport
         return True if writer.get_extra_info("sslcontext") else False
-
+    def _is_cp_ok(self)->bool:
+        pass
 
 class CommunicationSessionHandler:
     """
