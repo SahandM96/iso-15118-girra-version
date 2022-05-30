@@ -16,6 +16,9 @@ import socket
 from asyncio.streams import StreamReader, StreamWriter
 from typing import Dict, List, Optional, Tuple, Union
 
+from iso15118.secc.states.cp_handler import (
+    check_cp, CP
+)
 from iso15118.secc.controller.interface import EVSEControllerInterface
 from iso15118.secc.failed_responses import (
     init_failed_responses_din_spec_70121,
@@ -64,11 +67,11 @@ class SECCCommunicationSession(V2GCommunicationSession):
     """
 
     def __init__(
-        self,
-        transport: Tuple[StreamReader, StreamWriter],
-        session_handler_queue: asyncio.Queue,
-        config: Config,
-        evse_controller: EVSEControllerInterface,
+            self,
+            transport: Tuple[StreamReader, StreamWriter],
+            session_handler_queue: asyncio.Queue,
+            config: Config,
+            evse_controller: EVSEControllerInterface,
     ):
         # Need to import here to avoid a circular import error
         # pylint: disable=import-outside-toplevel
@@ -141,8 +144,7 @@ class SECCCommunicationSession(V2GCommunicationSession):
         """
         _, writer = transport
         return True if writer.get_extra_info("sslcontext") else False
-    def _is_cp_ok(self)->bool:
-        pass
+
 
 class CommunicationSessionHandler:
     """
@@ -153,7 +155,7 @@ class CommunicationSessionHandler:
     # pylint: disable=too-many-instance-attributes
 
     def __init__(
-        self, config: Config, codec: IEXICodec, evse_controller: EVSEControllerInterface
+            self, config: Config, codec: IEXICodec, evse_controller: EVSEControllerInterface
     ):
 
         self.list_of_tasks = []
@@ -321,3 +323,24 @@ class CommunicationSessionHandler:
         logger.debug(f"Sending SDPResponse: {sdp_response}")
 
         self.udp_server.send(v2gtp_msg, message.addr)
+
+    @staticmethod
+    async def is_cp_ok() -> bool:
+        if check_cp == CP.D:
+            logger.warning("CP is set to D, no communication possible")
+            return False
+        if check_cp == CP.B:
+            logger.warning("CP is set to B, communication possible")
+            return True
+        logger.warning("CP is set to unknown value, no communication possible")
+        return False
+
+    async def restart_session_handler(self):
+        """
+        This method is necessary, because python does not allow
+        async def __init__.
+        Therefore, we need to create a separate async method to be our
+        constructor.
+        """
+        logger.info("Session handler restarted")
+        await self.start_session_handler()

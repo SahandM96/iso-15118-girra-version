@@ -30,7 +30,9 @@ class SECCHandler(CommunicationSessionHandler):
 
     async def start(self):
         try:
-            await self.start_session_handler()
+            if await self.is_cp_ok():
+                await self.start_session_handler()
+            await self.restart_session_handler()
         except Exception as exc:
             logger.error(f"SECC terminated: {exc}")
             # Re-raise so the process ends with a non-zero exit code and the
