@@ -1,8 +1,6 @@
 """ import os and enums """
 import logging
-import os
 
-from enum import IntEnum
 
 logger = logging.getLogger(__name__)
 
