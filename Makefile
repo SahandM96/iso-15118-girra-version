@@ -80,6 +80,13 @@ run-evcc:
 run-secc:
 	$(shell which python) iso15118/secc/main.py
 
+
+run-thread:
+	$(shell which python) cp_thread/handler.py
+
+run-controller:
+	$(shell which python) controller/main.py
+
 mypy:
 	mypy --config-file mypy.ini iso15118 tests
 
