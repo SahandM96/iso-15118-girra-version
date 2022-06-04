@@ -82,7 +82,7 @@ run-secc:
 
 
 run-thread:
-	$(shell which python) cp_thread/handler.py
+	$(shell which python) iso15118/cp_thread/main.py
 
 run-controller:
 	$(shell which python) controller/main.py
