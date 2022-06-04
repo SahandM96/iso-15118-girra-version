@@ -7,14 +7,10 @@ logger = logging.getLogger(__name__)
 
 context = zmq.Context()
 socket = context.socket(zmq.REP)
-try:
-    while True:
-        socket.bind("tcp://*:5555")
+socket.bind("tcp://*:5555")
+while True:
+    message = socket.recv()
+    logger.info("Received request: %s", message)
+    print("Received request: %s", message)
+    socket.send(b"controller wait for new message")
 
-        message = socket.recv()
-        print("Received request: %s", message)
-
-        #  Send reply back to client
-        socket.send(b"World")
-finally:
-    socket.close()

@@ -31,16 +31,10 @@ class SECCHandler(CommunicationSessionHandler):
 
     async def start(self):
         try:
-            await self.try_to_strat()
+            await self.start_session_handler()
         except Exception as exc:
             logger.error(f"SECC terminated: {exc}")
             # Re-raise so the process ends with a non-zero exit code and the
             # watchdog can restart the service
             raise
 
-    async def try_to_strat(self):
-        while True:
-            if await self.is_cp_ok() == 150:
-                await self.start_session_handler()
-            else:
-                await self.restart_session_handler()

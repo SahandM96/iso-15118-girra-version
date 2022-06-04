@@ -16,10 +16,8 @@ import socket
 import time
 from asyncio.streams import StreamReader, StreamWriter
 from typing import Dict, List, Optional, Tuple, Union
+from iso15118.cp_thread.value_metric import get_cp_value
 
-from iso15118.secc.states.cp_handler import (
-    check_cp
-)
 from iso15118.secc.controller.interface import EVSEControllerInterface
 from iso15118.secc.failed_responses import (
     init_failed_responses_din_spec_70121,
@@ -57,7 +55,7 @@ from iso15118.shared.notifications import (
     UDPPacketNotification,
 )
 from iso15118.shared.utils import cancel_task, wait_till_finished
-
+from iso15118.cp_thread.main import run_cp_thread
 logger = logging.getLogger(__name__)
 
 
@@ -167,7 +165,7 @@ class CommunicationSessionHandler:
 
         # Set the selected EXI codec implementation
         EXI().set_exi_codec(codec)
-
+        run_cp_thread()
         # Receiving queue for UDP or TCP packets and session
         # triggers (e.g. pause/terminate)
         self._rcv_queue = asyncio.Queue()
@@ -184,22 +182,29 @@ class CommunicationSessionHandler:
         Therefore, we need to create a separate async method to be our
         constructor.
         """
+        try:
+            if 150 == get_cp_value():
+                self.udp_server = UDPServer(self._rcv_queue, self.config.iface)
+                self.tcp_server = TCPServer(self._rcv_queue, self.config.iface)
 
-        self.udp_server = UDPServer(self._rcv_queue, self.config.iface)
-        self.tcp_server = TCPServer(self._rcv_queue, self.config.iface)
+                self.list_of_tasks = [
+                    self.get_from_rcv_queue(self._rcv_queue),
+                    self.udp_server.start(),
+                    self.tcp_server.start_tls(),
+                ]
 
-        self.list_of_tasks = [
-            self.get_from_rcv_queue(self._rcv_queue),
-            self.udp_server.start(),
-            self.tcp_server.start_tls(),
-        ]
+                if not self.config.enforce_tls:
+                    self.list_of_tasks.append(self.tcp_server.start_no_tls())
 
-        if not self.config.enforce_tls:
-            self.list_of_tasks.append(self.tcp_server.start_no_tls())
+                logger.info("Communication session handler started")
 
-        logger.info("Communication session handler started")
-
-        await wait_till_finished(self.list_of_tasks)
+                await wait_till_finished(self.list_of_tasks)
+            else:
+                time.sleep(5)
+                logger.info("Session handler restarted")
+                await self.start_session_handler()
+        except Exception as exc:
+            raise
 
     async def get_from_rcv_queue(self, queue: asyncio.Queue):
         """
@@ -324,17 +329,3 @@ class CommunicationSessionHandler:
         logger.debug(f"Sending SDPResponse: {sdp_response}")
 
         self.udp_server.send(v2gtp_msg, message.addr)
-
-    async def is_cp_ok(self) -> int:
-        logger.info("CP is " + str( await check_cp()))
-        return await check_cp()
-
-    async def restart_session_handler(self):
-        """
-        This method is necessary, because python does not allow
-        async def __init__.
-        Therefore, we need to create a separate async method to be our
-        constructor.
-        """
-        time.sleep(0.1)
-        logger.info("Session handler restarted")
