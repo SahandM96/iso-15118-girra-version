@@ -3,8 +3,10 @@ import logging
 import time
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+import os
 
 
+logger = logging.getLogger(__name__)
 
 path = "/home/sahandm96/watch_dir/"
 context = zmq.Context()
@@ -48,7 +50,6 @@ observer.schedule(event_handler, path, recursive=True)
 observer.start()
 
 try:
-    logger = logging.getLogger(__name__)
     while True:
         socket = context.socket(zmq.REQ)
         socket.connect("tcp://localhost:5555")
