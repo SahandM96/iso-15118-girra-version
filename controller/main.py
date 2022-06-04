@@ -5,10 +5,10 @@ import zmq
 
 logger = logging.getLogger(__name__)
 
+context = zmq.Context()
+socket = context.socket(zmq.REP)
 try:
     while True:
-        context = zmq.Context()
-        socket = context.socket(zmq.REP)
         socket.bind("tcp://*:5555")
 
         message = socket.recv()
