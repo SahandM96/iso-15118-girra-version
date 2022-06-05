@@ -14,7 +14,7 @@ observer.schedule(event_handler, PATH, recursive=True)
 
 def run_cp_thread():
     observer.start()
-    logger.info("Starting Watchdog")
+    logger.info("Starting CP Watcher")
     try:
         while True:
             time.sleep(0.5)

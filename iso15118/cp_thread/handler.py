@@ -11,18 +11,6 @@ logger = logging.getLogger(__name__)
 class MyEventHandler(FileSystemEventHandler):
     """ My Handler """
 
-    def on_moved(self, event):
-        super().on_moved(event)
-        zmq_run_server("on_moved")
-
-    def on_created(self, event):
-        super().on_created(event)
-        zmq_run_server("on_created")
-
-    def on_deleted(self, event):
-        super().on_deleted(event)
-        zmq_run_server("on_deleted")
-
     def on_modified(self, event):
         super().on_modified(event)
         what = 'directory' if event.is_directory else 'file'
