@@ -1,3 +1,8 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 def value_metric() -> bool:
     try:
         with open('tmp_cp', 'r+') as VALUE:
@@ -6,6 +11,7 @@ def value_metric() -> bool:
             VALUE.close()
             return False
     except Exception as exc:
+        logger.info(exc)
         raise
 
 
@@ -16,6 +22,7 @@ def get_cp_value() -> int:
             VALUE.close()
             return tmp
     except Exception as exc:
+        logger.info(exc)
         raise
 
 
@@ -25,4 +32,5 @@ def set_cp_value(param):
             VALUE.write(str(int(param)))
             VALUE.close()
     except Exception as exc:
+        logger.info(exc)
         raise
