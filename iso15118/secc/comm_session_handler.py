@@ -55,7 +55,6 @@ from iso15118.shared.notifications import (
     UDPPacketNotification,
 )
 from iso15118.shared.utils import cancel_task, wait_till_finished
-from iso15118.cp_thread.main import run_cp_thread
 logger = logging.getLogger(__name__)
 
 
@@ -162,10 +161,11 @@ class CommunicationSessionHandler:
         self.tcp_server = None
         self.config = config
         self.evse_controller = evse_controller
+        self.cp_metric = get_cp_value()
 
         # Set the selected EXI codec implementation
         EXI().set_exi_codec(codec)
-        run_cp_thread()
+
         # Receiving queue for UDP or TCP packets and session
         # triggers (e.g. pause/terminate)
         self._rcv_queue = asyncio.Queue()
@@ -200,10 +200,11 @@ class CommunicationSessionHandler:
 
                 await wait_till_finished(self.list_of_tasks)
             else:
-                time.sleep(5)
-                logger.info("Session handler restarted")
+                time.sleep(2)
+                logger.info("CP is not Ready")
                 await self.start_session_handler()
         except Exception as exc:
+            logger.info(exc)
             raise
 
     async def get_from_rcv_queue(self, queue: asyncio.Queue):
