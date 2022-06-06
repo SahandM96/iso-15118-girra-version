@@ -5,19 +5,17 @@ logger = logging.getLogger(__name__)
 
 def value_metric() -> bool:
     try:
-        with open('tmp_cp', 'r+') as VALUE:
-            if VALUE.read().strip() == 150:
-                return True
-            VALUE.close()
-            return False
+        if get_cp_value() == 150:
+            return True
+        return False
     except Exception as exc:
         logger.info(exc)
         raise
 
 
-def get_cp_value() -> int:
+def get_cp_value(path="/home/sahandm96/watch_dir/cp_adc") -> int:
     try:
-        with open('tmp_cp', 'r+') as VALUE:
+        with open(path, 'r+') as VALUE:
             tmp = int(VALUE.read().strip())
             VALUE.close()
             return tmp
@@ -26,9 +24,9 @@ def get_cp_value() -> int:
         raise
 
 
-def set_cp_value(param):
+def set_cp_value(path, param):
     try:
-        with open('tmp_cp', 'w+') as VALUE:
+        with open(path, 'w+') as VALUE:
             VALUE.write(str(int(param)))
             VALUE.close()
     except Exception as exc:

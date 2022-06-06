@@ -18,6 +18,6 @@ class MyEventHandler(FileSystemEventHandler):
             if event.src_path == '/home/sahandm96/watch_dir/cp_adc':
                 with open("/home/sahandm96/watch_dir/cp_adc") as file_cp_adc:
                     value = str(file_cp_adc.read()).strip()
-                    set_cp_value(int(value))
+                    set_cp_value("/home/sahandm96/watch_dir/cp_adc", int(value))
                     zmq_run_server(value)
 

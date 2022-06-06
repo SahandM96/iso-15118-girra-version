@@ -16,7 +16,7 @@ import socket
 import time
 from asyncio.streams import StreamReader, StreamWriter
 from typing import Dict, List, Optional, Tuple, Union
-from iso15118.cp_thread.value_metric import get_cp_value
+from iso15118.cp_thread.value_metric import value_metric
 
 from iso15118.secc.controller.interface import EVSEControllerInterface
 from iso15118.secc.failed_responses import (
@@ -161,7 +161,6 @@ class CommunicationSessionHandler:
         self.tcp_server = None
         self.config = config
         self.evse_controller = evse_controller
-        self.cp_metric = get_cp_value()
 
         # Set the selected EXI codec implementation
         EXI().set_exi_codec(codec)
@@ -183,7 +182,7 @@ class CommunicationSessionHandler:
         constructor.
         """
         try:
-            if 150 == get_cp_value():
+            if value_metric():
                 self.udp_server = UDPServer(self._rcv_queue, self.config.iface)
                 self.tcp_server = TCPServer(self._rcv_queue, self.config.iface)
 
