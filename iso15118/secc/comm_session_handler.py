@@ -182,26 +182,22 @@ class CommunicationSessionHandler:
         constructor.
         """
         try:
-            if value_metric():
-                self.udp_server = UDPServer(self._rcv_queue, self.config.iface)
-                self.tcp_server = TCPServer(self._rcv_queue, self.config.iface)
 
-                self.list_of_tasks = [
-                    self.get_from_rcv_queue(self._rcv_queue),
-                    self.udp_server.start(),
-                    self.tcp_server.start_tls(),
-                ]
+            self.udp_server = UDPServer(self._rcv_queue, self.config.iface)
+            self.tcp_server = TCPServer(self._rcv_queue, self.config.iface)
 
-                if not self.config.enforce_tls:
-                    self.list_of_tasks.append(self.tcp_server.start_no_tls())
+            self.list_of_tasks = [
+               self.get_from_rcv_queue(self._rcv_queue),
+               self.udp_server.start(),
+               self.tcp_server.start_tls(),
+            ]
 
-                logger.info("Communication session handler started")
+            if not self.config.enforce_tls:
+                self.list_of_tasks.append(self.tcp_server.start_no_tls())
 
-                await wait_till_finished(self.list_of_tasks)
-            else:
-                time.sleep(2)
-                logger.info("CP is not Ready")
-                await self.start_session_handler()
+            logger.info("Communication session handler started")
+
+            await wait_till_finished(self.list_of_tasks)
         except Exception as exc:
             logger.info(exc)
             raise
@@ -231,24 +227,24 @@ class CommunicationSessionHandler:
                         "TCP client connected, client address is "
                         f"{notification.ip_address}."
                     )
+                    if value_metric():
+                        try:
+                            comm_session, task = self.comm_sessions[notification.ip_address]
+                            comm_session.resume()
+                        except KeyError:
+                            comm_session = SECCCommunicationSession(
+                                notification.transport,
+                                self._rcv_queue,
+                                self.config,
+                                self.evse_controller,
+                            )
 
-                    try:
-                        comm_session, task = self.comm_sessions[notification.ip_address]
-                        comm_session.resume()
-                    except KeyError:
-                        comm_session = SECCCommunicationSession(
-                            notification.transport,
-                            self._rcv_queue,
-                            self.config,
-                            self.evse_controller,
+                        task = asyncio.create_task(
+                            comm_session.start(
+                                Timeouts.V2G_EVCC_COMMUNICATION_SETUP_TIMEOUT
+                            )
                         )
-
-                    task = asyncio.create_task(
-                        comm_session.start(
-                            Timeouts.V2G_EVCC_COMMUNICATION_SETUP_TIMEOUT
-                        )
-                    )
-                    self.comm_sessions[notification.ip_address] = (comm_session, task)
+                        self.comm_sessions[notification.ip_address] = (comm_session, task)
                 elif isinstance(notification, StopNotification):
                     try:
                         await cancel_task(

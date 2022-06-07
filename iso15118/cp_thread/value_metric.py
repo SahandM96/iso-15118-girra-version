@@ -24,7 +24,7 @@ def get_cp_value(path="/home/sahandm96/watch_dir/cp_adc") -> int:
         raise
 
 
-def set_cp_value(path, param):
+def set_cp_value(param, path="/home/sahandm96/watch_dir/cp_adc"):
     try:
         with open(path, 'w+') as VALUE:
             VALUE.write(str(int(param)))

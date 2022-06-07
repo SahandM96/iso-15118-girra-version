@@ -118,7 +118,8 @@ from iso15118.shared.security import (
     verify_signature,
 )
 from iso15118.shared.states import State, Terminate
-
+from iso15118.cp_thread.value_metric import set_cp_value
+from iso15118.cp_thread.value_metric import get_cp_value
 logger = logging.getLogger(__name__)
 
 
@@ -1379,6 +1380,8 @@ class SessionStop(StateSECC):
             V2GMessageDINSPEC,
         ],
     ):
+        logger.info("=================================================================")
+        set_cp_value(500)
         msg = self.check_msg_v2(message, [SessionStopReq])
         if not msg:
             return
@@ -1775,13 +1778,20 @@ class CurrentDemand(StateSECC):
             # But if we set receipt_required to True, we expect a
             # MeteringReceiptReq
             next_state = MeteringReceipt
+        if not get_cp_value():
 
-        self.create_next_message(
-            next_state,
-            current_demand_res,
-            Timeouts.V2G_SECC_SEQUENCE_TIMEOUT,
-            Namespace.ISO_V2_MSG_DEF,
-        )
+            self.create_next_message(
+                next_state,
+                current_demand_res,
+                Timeouts.V2G_SECC_SEQUENCE_TIMEOUT,
+                Namespace.ISO_V2_MSG_DEF,
+            )
+        else:
+            self.stop_state_machine(
+                "CP Not Ok",
+                message,
+                ResponseCode.FAILED_SEQUENCE_ERROR
+            )
 
         self.expecting_current_demand_req = False
 

@@ -10,7 +10,7 @@ socket = context.socket(zmq.REP)
 socket.bind("tcp://*:5555")
 while True:
     message = socket.recv()
-    logger.info("Received request: %s", message)
+    # logger.info("Received request: %s", message)
     print("Received request: %s", message)
     socket.send(b"controller wait for new message")
 
