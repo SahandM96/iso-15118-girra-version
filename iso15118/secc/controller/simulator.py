@@ -3,10 +3,11 @@ This module contains the code to retrieve (hardware-related) data from the EVSE
 (Electric Vehicle Supply Equipment).
 """
 import logging
+import zmq
+import json
 import time
 from dataclasses import dataclass
 from typing import List, Optional
-from typing_extensions import Self
 
 from aiofile import async_open
 from pydantic import BaseModel, Field
@@ -155,7 +156,6 @@ async def read_service_id_parameter_mappings():
         ) from exc
 
 
-
 class SimEVSEController(EVSEControllerInterface):
     """
     A simulated version of an EVSE controller
@@ -178,25 +178,35 @@ class SimEVSEController(EVSEControllerInterface):
     # |             COMMON FUNCTIONS (FOR ALL ENERGY TRANSFER MODES)             |
     # ============================================================================
 
+    def send_to_controller(self, stage: str, messages: any) -> str:
+        context = zmq.Context()
+        socket = context.socket(zmq.REQ)
+        socket.connect("tcp://localhost:5555")
+        socket.send_string(str(stage) + "-" +str(messages))
+        return str(socket.recv())
+
+
+
     def get_evse_id(self, protocol: Protocol) -> str:
         if protocol == Protocol.DIN_SPEC_70121:
-            #  To transform a string-based DIN SPEC 91286 EVSE ID to hexBinary
-            #  representation and vice versa, the following conversion rules shall
-            #  be used for each character and hex digit: '0' <--> 0x0, '1' <--> 0x1,
-            #  '2' <--> 0x2, '3' <--> 0x3, '4' <--> 0x4, '5' <--> 0x5, '6' <--> 0x6,
-            #  '7' <--> 0x7, '8' <--> 0x8, '9' <--> 0x9, '*' <--> 0xA,
-            #  Unused <--> 0xB .. 0xF.
-            # Example: The DIN SPEC 91286 EVSE ID “49*89*6360” is represented
-            # as “0x49 0xA8 0x9A 0x63 0x60”.
-            return "49A89A6360"
-        """Overrides EVSEControllerInterface.get_evse_id()."""
-        return "UK123E1234"
+        #  To transform a string-based DIN SPEC 91286 EVSE ID to hexBinary
+        #  representation and vice versa, the following conversion rules shall
+        #  be used for each character and hex digit: '0' <--> 0x0, '1' <--> 0x1,
+        #  '2' <--> 0x2, '3' <--> 0x3, '4' <--> 0x4, '5' <--> 0x5, '6' <--> 0x6,
+        #  '7' <--> 0x7, '8' <--> 0x8, '9' <--> 0x9, '*' <--> 0xA,
+        #  Unused <--> 0xB .. 0xF.
+        # Example: The DIN SPEC 91286 EVSE ID “49*89*6360” is represented
+        # as “0x49 0xA8 0x9A 0x63 0x60”.
+            return self.send_to_controller("get_evse_id", "DIN_SPEC_70121")
+        
+        #    return "49A89A6360"
 
-
+    #        """Overrides EVSEControllerInterface.get_evse_id()."""
+        return self.send_to_controller("get_evse_id","ISO_15118_2")
 
 
     def get_supported_energy_transfer_modes(
-        self, protocol: Protocol
+            self, protocol: Protocol
     ) -> List[EnergyTransferModeEnum]:
         """Overrides EVSEControllerInterface.get_supported_energy_transfer_modes()."""
         if protocol == Protocol.DIN_SPEC_70121:
@@ -213,9 +223,9 @@ class SimEVSEController(EVSEControllerInterface):
         return [dc_extended]
 
     def get_scheduled_se_params(
-        self,
-        selected_energy_service: SelectedEnergyService,
-        schedule_exchange_req: ScheduleExchangeReq,
+            self,
+            selected_energy_service: SelectedEnergyService,
+            schedule_exchange_req: ScheduleExchangeReq,
     ) -> Optional[ScheduledScheduleExchangeResParams]:
         """Overrides EVSEControllerInterface.get_scheduled_se_params()."""
         charging_power_schedule_entry = PowerScheduleEntry(
@@ -335,7 +345,7 @@ class SimEVSEController(EVSEControllerInterface):
         return scheduled_params
 
     def get_service_parameter_list(
-        self, service_id: int
+            self, service_id: int
     ) -> Optional[ServiceParameterList]:
         """Overrides EVSEControllerInterface.get_service_parameter_list()."""
         if service_id in self.v20_service_id_parameter_mapping.keys():
@@ -349,9 +359,9 @@ class SimEVSEController(EVSEControllerInterface):
         return service_parameter_list
 
     def get_dynamic_se_params(
-        self,
-        selected_energy_service: SelectedEnergyService,
-        schedule_exchange_req: ScheduleExchangeReq,
+            self,
+            selected_energy_service: SelectedEnergyService,
+            schedule_exchange_req: ScheduleExchangeReq,
     ) -> Optional[DynamicScheduleExchangeResParams]:
         """Overrides EVSEControllerInterface.get_dynamic_se_params()."""
         price_level_schedule_entry = PriceLevelScheduleEntry(
@@ -398,7 +408,7 @@ class SimEVSEController(EVSEControllerInterface):
         return True
 
     def get_sa_schedule_list_dinspec(
-        self, max_schedule_entries: Optional[int], departure_time: int = 0
+            self, max_schedule_entries: Optional[int], departure_time: int = 0
     ) -> Optional[List[SAScheduleTupleEntryDINSPEC]]:
         """Overrides EVSEControllerInterface.get_sa_schedule_list_dinspec()."""
         sa_schedule_list: List[SAScheduleTupleEntryDINSPEC] = []
@@ -419,7 +429,7 @@ class SimEVSEController(EVSEControllerInterface):
         return sa_schedule_list
 
     def get_sa_schedule_list(
-        self, max_schedule_entries: Optional[int], departure_time: int = 0
+            self, max_schedule_entries: Optional[int], departure_time: int = 0
     ) -> Optional[List[SAScheduleTuple]]:
         """Overrides EVSEControllerInterface.get_sa_schedule_list()."""
         sa_schedule_list: List[SAScheduleTuple] = []
@@ -507,7 +517,6 @@ class SimEVSEController(EVSEControllerInterface):
         """Overrides EVSEControllerInterface.open_contactor()."""
         print("+++++++++++++++++++++++++++++++++++++++++++++++++++++")
         self.contactor = Contactor.OPENED
-        
 
     def get_contactor_state(self) -> Contactor:
         """Overrides EVSEControllerInterface.get_contactor_state()."""
@@ -585,7 +594,7 @@ class SimEVSEController(EVSEControllerInterface):
         )
 
     def get_bpt_scheduled_ac_charge_loop_params(
-        self,
+            self,
     ) -> BPTScheduledACChargeLoopResParams:
         """Overrides EVControllerInterface.get_bpt_scheduled_ac_charge_loop_params()."""
         return BPTScheduledACChargeLoopResParams(
@@ -655,9 +664,6 @@ class SimEVSEController(EVSEControllerInterface):
             ),
         )
 
-
-
-
     def get_evse_present_voltage(self) -> PVEVSEPresentVoltage:
         """Overrides EVSEControllerInterface.get_evse_present_voltage()."""
         return PVEVSEPresentVoltage(multiplier=0, value=230, unit="V")
@@ -673,7 +679,7 @@ class SimEVSEController(EVSEControllerInterface):
         pass
 
     def send_charging_command(
-        self, voltage: PVEVTargetVoltage, current: PVEVTargetCurrent
+            self, voltage: PVEVTargetVoltage, current: PVEVTargetCurrent
     ):
         pass
 
