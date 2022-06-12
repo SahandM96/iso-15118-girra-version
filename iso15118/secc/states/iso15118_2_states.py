@@ -1619,6 +1619,7 @@ class PreCharge(StateSECC):
             V2GMessageDINSPEC,
         ],
     ):
+        self.comm_session.evse_controller.get_state()
         msg = self.check_msg_v2(
             message,
             [PreChargeReq, PowerDeliveryReq],

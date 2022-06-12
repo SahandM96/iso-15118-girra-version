@@ -2,13 +2,15 @@
 import logging
 import threading
 import time
-
+import os
 import zmq
+from dotenv import load_dotenv
 
+load_dotenv()
 logger = logging.getLogger(__name__)
 
 context = zmq.Context()
-socket = context.socket(zmq.ROUTER)
+socket = context.socket(zmq.REP)
 socket.bind("tcp://*:5555")
 
 
@@ -19,9 +21,9 @@ def make_error_message(error_code: str, error_message: str) -> str:
 
 def get_evse_id(protocol: str) -> str:
     logger.info("get_evse_id Called")
-    if protocol == "DIN_SPEC_70121":
-        return "randomDIN"
-    return "SM96"
+    if protocol == "DIN":
+        return os.environ.get("EVSE_ID_DIN")
+    return os.environ.get("EVESE_ID_ISO15188_2")
 
 
 # handle cp_thead message
@@ -33,29 +35,25 @@ def cp_thead_message_handler(message: str) -> str:
 
 def main():
     while True:
-        message: str = str(socket.recv_multipart()[1]).replace("b'", "").replace("'", "")
-        print(message)
+        message: str = socket.recv_string()
         stage, msg = message.split(":")
         print(f"stage: {str(stage).strip()} msg: {str(msg).strip()}")
 
         if stage == "get_evse_id":
             rsp: str = get_evse_id(str(msg))
             print(f"rsp: {rsp}")
-            socket.send(b"get_evse_id:" + rsp.encode())
-            time.sleep(0.01)
-
-        if stage == "cp_thead":
+            socket.send_string(f"get_evse_id:{rsp}")
+            # time.sleep(0.01)
+        elif stage == "cp_thead":
             rsp: str = cp_thead_message_handler(str(msg).strip())
             print(f"rsp: {rsp}")
-            socket.send(b"cp_thead:" + rsp.encode())
-            time.sleep(0.01)
-
-        res: str = make_error_message("0", "NOT IMPLEMENTED")
-        socket.send(res.encode())
-        time.sleep(0.01)
+            socket.send_string(f"cp_thead:{rsp}")
+            # time.sleep(0.01)
+        else:
+            res: str = make_error_message("0", "NOT IMPLEMENTED")
+            socket.send_string(res)
+        # time.sleep(0.01)
 
 
 if __name__ == "__main__":
-    t1 = threading.Thread(target=main)
-    t1.start()
-    t1.join()
+    main()

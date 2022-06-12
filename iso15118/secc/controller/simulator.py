@@ -3,6 +3,8 @@ This module contains the code to retrieve (hardware-related) data from the EVSE
 (Electric Vehicle Supply Equipment).
 """
 import logging
+import os
+
 import zmq
 import json
 import time
@@ -13,6 +15,7 @@ from aiofile import async_open
 from pydantic import BaseModel, Field
 
 from iso15118.secc.controller.interface import EVSEControllerInterface
+from iso15118.secc.states.secc_state import StateSECC
 from iso15118.shared.messages.datatypes import (
     DCEVSEChargeParameter,
     DCEVSEStatus,
@@ -180,33 +183,37 @@ class SimEVSEController(EVSEControllerInterface):
 
     def send_to_controller(self, stage: str, messages: str) -> str:
         context = zmq.Context()
-        socket = context.socket(zmq.DEALER)
+        socket = context.socket(zmq.REQ)
         # socket.identity = u"v2g_to_controller".encode("ascii")
 
         socket.connect("tcp://localhost:5555")
         msg = str(stage) + ":" + str(messages)
         socket.send_multipart([msg.encode("utf-8")])
-
-        return str(socket.recv_multipart()).replace("b'", "").replace("'", "")
+        rep = socket.recv_string()
+        return rep
 
     # process_incoming_message
 
     def get_evse_id(self, protocol: Protocol) -> str:
+
+        rep: str = "SIMPLE"
         if protocol == Protocol.DIN_SPEC_70121:
-            #  To transform a string-based DIN SPEC 91286 EVSE ID to hexBinary
-            #  representation and vice versa, the following conversion rules shall
-            #  be used for each character and hex digit: '0' <--> 0x0, '1' <--> 0x1,
-            #  '2' <--> 0x2, '3' <--> 0x3, '4' <--> 0x4, '5' <--> 0x5, '6' <--> 0x6,
-            #  '7' <--> 0x7, '8' <--> 0x8, '9' <--> 0x9, '*' <--> 0xA,
-            #  Unused <--> 0xB .. 0xF.
-            # Example: The DIN SPEC 91286 EVSE ID “49*89*6360” is represented
-            # as “0x49 0xA8 0x9A 0x63 0x60”.
-            return self.send_to_controller("get_evse_id", "DIN_SPEC_70121")
+            rep = self.send_to_controller("get_evse_id", "DIN")
+        else:
+            rep = self.send_to_controller("get_evse_id", "ISO15118")
+        #  To transform a string-based DIN SPEC 91286 EVSE ID to hexBinary
+        #  representation and vice versa, the following conversion rules shall
+        #  be used for each character and hex digit: '0' <--> 0x0, '1' <--> 0x1,
+        #  '2' <--> 0x2, '3' <--> 0x3, '4' <--> 0x4, '5' <--> 0x5, '6' <--> 0x6,
+        #  '7' <--> 0x7, '8' <--> 0x8, '9' <--> 0x9, '*' <--> 0xA,
+        #  Unused <--> 0xB .. 0xF.
+        # Example: The DIN SPEC 91286 EVSE ID “49*89*6360” is represented
+        # as “0x49 0xA8 0x9A 0x63 0x60”.
 
         #    return "49A89A6360"
 
         #        """Overrides EVSEControllerInterface.get_evse_id()."""
-        return self.send_to_controller("get_evse_id", "ISO_15118_2")
+        return rep
 
     def get_supported_energy_transfer_modes(
             self, protocol: Protocol
@@ -530,6 +537,9 @@ class SimEVSEController(EVSEControllerInterface):
         return EVSEStatus(
             notification_max_delay=0, evse_notification=EVSENotificationV20.TERMINATE
         )
+
+    def get_state(self):
+        logger.info(f"get_state() {StateSECC.T}")
 
     # ============================================================================
     # |                          AC-SPECIFIC FUNCTIONS                           |

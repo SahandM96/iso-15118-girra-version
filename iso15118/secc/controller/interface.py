@@ -51,7 +51,6 @@ from iso15118.shared.messages.iso15118_20.dc import (
     DCChargeParameterDiscoveryResParams,
 )
 
-
 @dataclass
 class EVDataContext:
     dc_current: Optional[int] = None
@@ -71,6 +70,15 @@ class EVSEControllerInterface(ABC):
     # ============================================================================
     # |             COMMON FUNCTIONS (FOR ALL ENERGY TRANSFER MODES)             |
     # ============================================================================
+
+    @abstractmethod
+    def send_to_controller(self, stage: str, messages: str) -> str:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_state(self):
+
+        raise NotImplementedError
 
     @abstractmethod
     def get_evse_id(self, protocol: Protocol) -> str:
