@@ -149,6 +149,7 @@ class SessionSetup(StateSECC):
             V2GMessageDINSPEC,
         ],
     ):
+        self.comm_session.evse_controller.get_state(self.comm_session.current_state)
         msg = self.check_msg_v2(message, [SessionSetupReq])
         if not msg:
             return
@@ -225,6 +226,7 @@ class ServiceDiscovery(StateSECC):
             V2GMessageDINSPEC,
         ],
     ):
+        self.comm_session.evse_controller.get_state(self.comm_session.current_state)
         msg = self.check_msg_v2(
             message,
             [ServiceDiscoveryReq, ServiceDetailReq, PaymentServiceSelectionReq],
@@ -371,6 +373,7 @@ class ServiceDetail(StateSECC):
             V2GMessageDINSPEC,
         ],
     ):
+        self.comm_session.evse_controller.get_state(self.comm_session.current_state)
         msg = self.check_msg_v2(
             message,
             [ServiceDetailReq, PaymentServiceSelectionReq],
@@ -456,6 +459,7 @@ class PaymentServiceSelection(StateSECC):
             V2GMessageDINSPEC,
         ],
     ):
+        self.comm_session.evse_controller.get_state(self.comm_session.current_state)
         msg = self.check_msg_v2(
             message,
             [
@@ -572,6 +576,7 @@ class CertificateInstallation(StateSECC):
             V2GMessageDINSPEC,
         ],
     ):
+        self.comm_session.evse_controller.get_state(self.comm_session.current_state)
         msg = self.check_msg_v2(message, [CertificateInstallationReq])
         if not msg:
             return
@@ -740,6 +745,7 @@ class PaymentDetails(StateSECC):
             V2GMessageDINSPEC,
         ],
     ):
+        self.comm_session.evse_controller.get_state(self.comm_session.current_state)
         msg = self.check_msg_v2(message, [PaymentDetailsReq])
         if not msg:
             return
@@ -850,6 +856,7 @@ class Authorization(StateSECC):
             V2GMessageDINSPEC,
         ],
     ):
+        self.comm_session.evse_controller.get_state(self.comm_session.current_state)
         msg = self.check_msg_v2(message, [AuthorizationReq])
 
         if not msg:
@@ -941,6 +948,7 @@ class ChargeParameterDiscovery(StateSECC):
             V2GMessageDINSPEC,
         ],
     ):
+        self.comm_session.evse_controller.get_state(self.comm_session.current_state)
         msg = self.check_msg_v2(
             message,
             [ChargeParameterDiscoveryReq, PowerDeliveryReq, CableCheckReq],
@@ -1108,6 +1116,7 @@ class PowerDelivery(StateSECC):
             V2GMessageDINSPEC,
         ],
     ):
+        self.comm_session.evse_controller.get_state(self.comm_session.current_state)
         msg = self.check_msg_v2(
             message,
             [
@@ -1280,6 +1289,7 @@ class MeteringReceipt(StateSECC):
             V2GMessageDINSPEC,
         ],
     ):
+        self.comm_session.evse_controller.get_state(self.comm_session.current_state)
         msg = self.check_msg_v2(
             message,
             [MeteringReceiptReq, ChargingStatusReq, CurrentDemandReq, PowerDeliveryReq],
@@ -1380,7 +1390,7 @@ class SessionStop(StateSECC):
             V2GMessageDINSPEC,
         ],
     ):
-        logger.info("=================================================================")
+        self.comm_session.evse_controller.get_state(self.comm_session.current_state)
         set_cp_value(500)
         msg = self.check_msg_v2(message, [SessionStopReq])
         if not msg:
@@ -1443,6 +1453,7 @@ class ChargingStatus(StateSECC):
             V2GMessageDINSPEC,
         ],
     ):
+        self.comm_session.evse_controller.get_state(self.comm_session.current_state)
         msg = self.check_msg_v2(
             message,
             [ChargingStatusReq, PowerDeliveryReq, MeteringReceiptReq],
@@ -1531,6 +1542,7 @@ class CableCheck(StateSECC):
             V2GMessageDINSPEC,
         ],
     ):
+        self.comm_session.evse_controller.get_state(self.comm_session.current_state)
         msg = self.check_msg_v2(message, [CableCheckReq])
         if not msg:
             return
@@ -1619,7 +1631,7 @@ class PreCharge(StateSECC):
             V2GMessageDINSPEC,
         ],
     ):
-        self.comm_session.evse_controller.get_state()
+        self.comm_session.evse_controller.get_state(self.comm_session.current_state)
         msg = self.check_msg_v2(
             message,
             [PreChargeReq, PowerDeliveryReq],
@@ -1709,6 +1721,7 @@ class CurrentDemand(StateSECC):
             V2GMessageDINSPEC,
         ],
     ):
+        self.comm_session.evse_controller.get_state(self.comm_session.current_state)
         msg = self.check_msg_v2(
             message,
             [CurrentDemandReq, PowerDeliveryReq],
@@ -1817,6 +1830,7 @@ class WeldingDetection(StateSECC):
             V2GMessageDINSPEC,
         ],
     ):
+        self.comm_session.evse_controller.get_state(self.comm_session.current_state)
         msg = self.check_msg_v2(
             message,
             [

@@ -9,7 +9,7 @@ import zmq
 import json
 import time
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from aiofile import async_open
 from pydantic import BaseModel, Field
@@ -185,53 +185,43 @@ class SimEVSEController(EVSEControllerInterface):
         context = zmq.Context()
         socket = context.socket(zmq.REQ)
         # socket.identity = u"v2g_to_controller".encode("ascii")
-
+        if messages is None:
+            messages = ""
         socket.connect("tcp://localhost:5555")
         msg = str(stage) + ":" + str(messages)
         socket.send_multipart([msg.encode("utf-8")])
         rep = socket.recv_string()
         return rep
 
-    # process_incoming_message
+    def controller_message_reader(self, message: str) -> Union[str, None, bool, EVSEStatus]:
+        message = message.split(":")[1]
+        return message
 
+    # ============================================================================
+    # |                          Dynamic by Controller                           |
+    # ============================================================================
     def get_evse_id(self, protocol: Protocol) -> str:
-
-        rep: str = "SIMPLE"
         if protocol == Protocol.DIN_SPEC_70121:
-            rep = self.send_to_controller("get_evse_id", "DIN")
+            rep = self.controller_message_reader(self.send_to_controller("get_evse_id", "DIN"))
         else:
-            rep = self.send_to_controller("get_evse_id", "ISO15118")
-        #  To transform a string-based DIN SPEC 91286 EVSE ID to hexBinary
-        #  representation and vice versa, the following conversion rules shall
-        #  be used for each character and hex digit: '0' <--> 0x0, '1' <--> 0x1,
-        #  '2' <--> 0x2, '3' <--> 0x3, '4' <--> 0x4, '5' <--> 0x5, '6' <--> 0x6,
-        #  '7' <--> 0x7, '8' <--> 0x8, '9' <--> 0x9, '*' <--> 0xA,
-        #  Unused <--> 0xB .. 0xF.
-        # Example: The DIN SPEC 91286 EVSE ID “49*89*6360” is represented
-        # as “0x49 0xA8 0x9A 0x63 0x60”.
-
-        #    return "49A89A6360"
-
-        #        """Overrides EVSEControllerInterface.get_evse_id()."""
+            rep = self.controller_message_reader(self.send_to_controller("get_evse_id", "ISO15118"))
         return rep
 
+    # ============================================================================
+    # |                          Dynamic by Controller                           |
+    # ============================================================================
     def get_supported_energy_transfer_modes(
             self, protocol: Protocol
     ) -> List[EnergyTransferModeEnum]:
-        """Overrides EVSEControllerInterface.get_supported_energy_transfer_modes()."""
         if protocol == Protocol.DIN_SPEC_70121:
-            """
-            For DIN SPEC, only DC_CORE and DC_EXTENDED are supported.
-            The other DC modes DC_COMBO_CORE and DC_DUAL are out of scope for DIN SPEC
-            """
-            dc_extended = EnergyTransferModeEnum.DC_EXTENDED
-            return [dc_extended]
+            rep = self.controller_message_reader(self.send_to_controller("get_supported_energy_transfer_modes", "DIN"))
+            return [EnergyTransferModeEnum(x) for x in rep.split(",")]
+        else:
+            rep = self.controller_message_reader(self.send_to_controller("get_supported_energy_transfer_modes",
+                                                                         "ISO15118"))
+            return [EnergyTransferModeEnum(x) for x in rep.split(",")]
 
-        # ac_single_phase = EnergyTransferModeEnum.AC_SINGLE_PHASE_CORE
-        # ac_three_phase = EnergyTransferModeEnum.AC_THREE_PHASE_CORE
-        dc_extended = EnergyTransferModeEnum.DC_EXTENDED
-        return [dc_extended]
-
+    # TODO : Para #1
     def get_scheduled_se_params(
             self,
             selected_energy_service: SelectedEnergyService,
@@ -354,6 +344,7 @@ class SimEVSEController(EVSEControllerInterface):
 
         return scheduled_params
 
+    # TODO : Para #2
     def get_service_parameter_list(
             self, service_id: int
     ) -> Optional[ServiceParameterList]:
@@ -368,6 +359,7 @@ class SimEVSEController(EVSEControllerInterface):
 
         return service_parameter_list
 
+    # TODO : Para #3
     def get_dynamic_se_params(
             self,
             selected_energy_service: SelectedEnergyService,
@@ -400,6 +392,7 @@ class SimEVSEController(EVSEControllerInterface):
 
         return dynamic_params
 
+    # TODO : Para #4
     def get_energy_service_list(self) -> ServiceList:
         """Overrides EVSEControllerInterface.get_energy_service_list()."""
         # AC = 1, DC = 2, AC_BPT = 5, DC_BPT = 6;
@@ -415,8 +408,9 @@ class SimEVSEController(EVSEControllerInterface):
 
     def is_authorised(self) -> bool:
         """Overrides EVSEControllerInterface.is_authorised()."""
-        return True
+        return bool(self.controller_message_reader(self.send_to_controller("is_authorised", "true")))
 
+    # TODO : Para #5
     def get_sa_schedule_list_dinspec(
             self, max_schedule_entries: Optional[int], departure_time: int = 0
     ) -> Optional[List[SAScheduleTupleEntryDINSPEC]]:
@@ -438,6 +432,7 @@ class SimEVSEController(EVSEControllerInterface):
         sa_schedule_list.append(sa_schedule_tuple_entry)
         return sa_schedule_list
 
+    # TODO : Para #6
     def get_sa_schedule_list(
             self, max_schedule_entries: Optional[int], departure_time: int = 0
     ) -> Optional[List[SAScheduleTuple]]:
@@ -489,12 +484,14 @@ class SimEVSEController(EVSEControllerInterface):
 
         return sa_schedule_list
 
+    # TODO : Para #7
     def get_meter_info_v2(self) -> MeterInfoV2:
         """Overrides EVSEControllerInterface.get_meter_info_v2()."""
         return MeterInfoV2(
             meter_id="Switch-Meter-123", meter_reading=12345, t_meter=time.time()
         )
 
+    # TODO : v20 #1
     def get_meter_info_v20(self) -> MeterInfoV20:
         """Overrides EVSEControllerInterface.get_meter_info_v20()."""
         return MeterInfoV20(
@@ -520,12 +517,12 @@ class SimEVSEController(EVSEControllerInterface):
 
     def close_contactor(self):
         """Overrides EVSEControllerInterface.close_contactor()."""
-        print("----------------------------------------------------")
+
         self.contactor = Contactor.CLOSED
 
     def open_contactor(self):
         """Overrides EVSEControllerInterface.open_contactor()."""
-        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++")
+
         self.contactor = Contactor.OPENED
 
     def get_contactor_state(self) -> Contactor:
@@ -534,12 +531,11 @@ class SimEVSEController(EVSEControllerInterface):
 
     def get_evse_status(self) -> EVSEStatus:
         """Overrides EVSEControllerInterface.get_evse_status()."""
-        return EVSEStatus(
-            notification_max_delay=0, evse_notification=EVSENotificationV20.TERMINATE
-        )
+        rep = self.controller_message_reader(self.send_to_controller('get_evse_status', ''))
+        return rep
 
-    def get_state(self):
-        logger.info(f"get_state() {StateSECC.T}")
+    def get_state(self, current: EVSEStatus) -> None:
+        logger.info(f" \\\\ on the {current.__str__().strip()} state  //")
 
     # ============================================================================
     # |                          AC-SPECIFIC FUNCTIONS                           |

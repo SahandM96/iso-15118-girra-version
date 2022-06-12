@@ -75,8 +75,13 @@ class EVSEControllerInterface(ABC):
     def send_to_controller(self, stage: str, messages: str) -> str:
         raise NotImplementedError
 
+
     @abstractmethod
-    def get_state(self):
+    def controller_message_reader(self, message:str) -> str:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_state(self, current: EVSEStatus) -> None:
 
         raise NotImplementedError
 
