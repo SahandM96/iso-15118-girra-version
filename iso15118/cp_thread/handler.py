@@ -18,5 +18,4 @@ class MyEventHandler(FileSystemEventHandler):
                 # with open("/home/sahandm96/watch_dir/cp_adc") as file_cp_adc:
                 #     value = str(file_cp_adc.read()).strip()
                 #     file_cp_adc.close()
-                zmq_run_server()
-
+                zmq_run_server

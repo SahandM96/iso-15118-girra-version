@@ -178,32 +178,35 @@ class SimEVSEController(EVSEControllerInterface):
     # |             COMMON FUNCTIONS (FOR ALL ENERGY TRANSFER MODES)             |
     # ============================================================================
 
-    def send_to_controller(self, stage: str, messages: any) -> str:
+    def send_to_controller(self, stage: str, messages: str) -> str:
         context = zmq.Context()
-        socket = context.socket(zmq.REQ)
+        socket = context.socket(zmq.DEALER)
+        # socket.identity = u"v2g_to_controller".encode("ascii")
+
         socket.connect("tcp://localhost:5555")
-        socket.send_string(str(stage) + "-" +str(messages))
-        return str(socket.recv())
+        msg = str(stage) + ":" + str(messages)
+        socket.send_multipart([msg.encode("utf-8")])
 
+        return str(socket.recv_multipart()).replace("b'", "").replace("'", "")
 
+    # process_incoming_message
 
     def get_evse_id(self, protocol: Protocol) -> str:
         if protocol == Protocol.DIN_SPEC_70121:
-        #  To transform a string-based DIN SPEC 91286 EVSE ID to hexBinary
-        #  representation and vice versa, the following conversion rules shall
-        #  be used for each character and hex digit: '0' <--> 0x0, '1' <--> 0x1,
-        #  '2' <--> 0x2, '3' <--> 0x3, '4' <--> 0x4, '5' <--> 0x5, '6' <--> 0x6,
-        #  '7' <--> 0x7, '8' <--> 0x8, '9' <--> 0x9, '*' <--> 0xA,
-        #  Unused <--> 0xB .. 0xF.
-        # Example: The DIN SPEC 91286 EVSE ID “49*89*6360” is represented
-        # as “0x49 0xA8 0x9A 0x63 0x60”.
+            #  To transform a string-based DIN SPEC 91286 EVSE ID to hexBinary
+            #  representation and vice versa, the following conversion rules shall
+            #  be used for each character and hex digit: '0' <--> 0x0, '1' <--> 0x1,
+            #  '2' <--> 0x2, '3' <--> 0x3, '4' <--> 0x4, '5' <--> 0x5, '6' <--> 0x6,
+            #  '7' <--> 0x7, '8' <--> 0x8, '9' <--> 0x9, '*' <--> 0xA,
+            #  Unused <--> 0xB .. 0xF.
+            # Example: The DIN SPEC 91286 EVSE ID “49*89*6360” is represented
+            # as “0x49 0xA8 0x9A 0x63 0x60”.
             return self.send_to_controller("get_evse_id", "DIN_SPEC_70121")
-        
+
         #    return "49A89A6360"
 
-    #        """Overrides EVSEControllerInterface.get_evse_id()."""
-        return self.send_to_controller("get_evse_id","ISO_15118_2")
-
+        #        """Overrides EVSEControllerInterface.get_evse_id()."""
+        return self.send_to_controller("get_evse_id", "ISO_15118_2")
 
     def get_supported_energy_transfer_modes(
             self, protocol: Protocol
