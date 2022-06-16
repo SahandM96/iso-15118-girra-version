@@ -1792,20 +1792,20 @@ class CurrentDemand(StateSECC):
             # But if we set receipt_required to True, we expect a
             # MeteringReceiptReq
             next_state = MeteringReceipt
-        if not get_cp_value():
+        # if not get_cp_value():
 
-            self.create_next_message(
-                next_state,
-                current_demand_res,
-                Timeouts.V2G_SECC_SEQUENCE_TIMEOUT,
-                Namespace.ISO_V2_MSG_DEF,
-            )
-        else:
-            self.stop_state_machine(
-                "CP Not Ok",
-                message,
-                ResponseCode.FAILED_SEQUENCE_ERROR
-            )
+        self.create_next_message(
+            next_state,
+            current_demand_res,
+            Timeouts.V2G_SECC_SEQUENCE_TIMEOUT,
+            Namespace.ISO_V2_MSG_DEF,
+        )
+        # else:
+        #     self.stop_state_machine(
+        #         "CP Not Ok",
+        #         message,
+        #         ResponseCode.FAILED_SEQUENCE_ERROR
+        #     )
 
         self.expecting_current_demand_req = False
 

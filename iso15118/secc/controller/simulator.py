@@ -193,7 +193,8 @@ class SimEVSEController(EVSEControllerInterface):
         rep = socket.recv_string()
         return rep
 
-    def controller_message_reader(self, message: str) -> Union[str, None, bool, EVSEStatus]:
+    def controller_message_reader(self, message: str) -> Union[str, None, bool, dict,
+                                                               EnergyTransferModeEnum, DCEVSEStatus]:
         message = message.split(":")[1]
         return message
 
@@ -214,12 +215,13 @@ class SimEVSEController(EVSEControllerInterface):
             self, protocol: Protocol
     ) -> List[EnergyTransferModeEnum]:
         if protocol == Protocol.DIN_SPEC_70121:
-            rep = self.controller_message_reader(self.send_to_controller("get_supported_energy_transfer_modes", "DIN"))
-            return [EnergyTransferModeEnum(x) for x in rep.split(",")]
+            logger.info("get supported energy transfer mods DIN_SPEC_70121")
+            return [self.controller_message_reader(self.send_to_controller("get_supported_energy_transfer_modes",
+                                                                           "DIN"))]
         else:
-            rep = self.controller_message_reader(self.send_to_controller("get_supported_energy_transfer_modes",
-                                                                         "ISO15118"))
-            return [EnergyTransferModeEnum(x) for x in rep.split(",")]
+            logger.info("get supported energy transfer mods ISO15118")
+            return [self.controller_message_reader(self.send_to_controller("get_supported_energy_transfer_modes",
+                                                                           "ISO15118"))]
 
     # TODO : Para #1
     def get_scheduled_se_params(
@@ -637,11 +639,12 @@ class SimEVSEController(EVSEControllerInterface):
 
     def get_dc_evse_status(self) -> DCEVSEStatus:
         """Overrides EVSEControllerInterface.get_dc_evse_status()."""
+        rep: dict = self.controller_message_reader(self.send_to_controller('get_dc_evse_status', ''))
         return DCEVSEStatus(
-            evse_notification=EVSENotificationV2.NONE,
-            notification_max_delay=0,
-            evse_isolation_status=IsolationLevel.VALID,
-            evse_status_code=DCEVSEStatusCode.EVSE_READY,
+            evse_notification=rep['evse_notification'],
+            notification_timestamp=int(rep['notification_max_delay']),
+            evse_isolation_status=rep['evse_isolation_status'],
+            evse_status_code=rep['evse_status_code'],
         )
 
     def get_dc_evse_charge_parameter(self) -> DCEVSEChargeParameter:

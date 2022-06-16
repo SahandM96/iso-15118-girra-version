@@ -8,9 +8,10 @@ from typing import List, Optional
 import zmq
 from dotenv import load_dotenv
 
-from iso15118.shared.messages.datatypes import EVSEStatus
+from iso15118.shared.messages.datatypes import EVSEStatus, DCEVSEStatus
 from iso15118.shared.messages.enums import EnergyTransferModeEnum
 from iso15118.shared.messages.iso15118_20.common_messages import ScheduledScheduleExchangeResParams
+from iso15118.shared.messages.datatypes import IsolationLevel, DCEVSEStatusCode, EVSENotification
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -28,19 +29,19 @@ def make_error_message(error_code: str, error_message: str) -> str:
 def get_evse_id(protocol: str) -> str:
     logger.info("get_evse_id Called")
     if protocol == "DIN":
-        return os.environ.get("EVSE_ID_DIN")
+        return os.environ.get("EVSE_ID")
     else:
-        return os.environ.get("EVESE_ID_ISO15188_2")
+        return os.environ.get("EVSE_ID")
 
 
-def get_supported_energy_transfer_modes(protocol: str) -> List[EnergyTransferModeEnum]:
+def get_supported_energy_transfer_modes(protocol: str) -> EnergyTransferModeEnum:
     logger.info("get_supported_energy_transfer_modes Called")
     if protocol == "DIN":
-        dc_extended = EnergyTransferModeEnum.DC_EXTENDED
-        return [dc_extended]
+        dc_extended = EnergyTransferModeEnum.DC_COMBO_CORE
+        return dc_extended
     else:
         dc_extended = EnergyTransferModeEnum.DC_EXTENDED
-        return [dc_extended]
+        return dc_extended
 
 
 # handle cp_thead message
@@ -58,8 +59,13 @@ def is_authorised(message: str) -> bool:
     return True
 
 
-def get_dc_evse_status(param):
-    pass
+def get_dc_evse_status(param: str) -> dict[str, any]:
+    return {
+        'evse_notification': EVSENotification.NONE,
+        'notification_max_delay': 0,
+        'evse_isolation_status': IsolationLevel.VALID,
+        'evse_status_code': DCEVSEStatusCode.EVSE_READY,
+    }
 
 
 def start_cable_check(param):
@@ -91,27 +97,31 @@ def main():
 
         if stage == "get_evse_id":
             rsp: str = get_evse_id(str(msg))
-            print(f"rsp: {rsp}")
+            print(f"get_evse_id: {rsp}")
             socket.send_string(f"get_evse_id:{rsp}")
             # time.sleep(0.01)
         elif stage == "cp_thead":
             rsp: str = cp_thead_message_handler(str(msg).strip())
-            print(f"rsp: {rsp}")
+            print(f"cp_thead_message_handler: {rsp}")
             socket.send_string(f"cp_thead:{rsp}")
             # time.sleep(0.01)
         elif stage == "get_supported_energy_transfer_modes":
-            rsp: List[EnergyTransferModeEnum] = get_supported_energy_transfer_modes(str(msg).strip())
-            print(f"rsp: {rsp}")
+            rsp: EnergyTransferModeEnum = get_supported_energy_transfer_modes(str(msg).strip())
+            print(f"get_supported_energy_transfer_modes: {rsp}")
             socket.send_string(f"get_supported_energy_transfer_modes:{rsp}")
             # time.sleep(0.01)
         elif stage == "is_authorised":
             rsp: bool = is_authorised(message)
-            print(f"rsp: {rsp}")
+            print(f"is_authorised: {rsp}")
             socket.send_string(f"is_authorised:{rsp}")
             # time.sleep(0.01)
         elif stage == "get_evse_status":
             rsp: EVSEStatus = get_evse_status(str(msg).strip())
-            print(f"rsp: {rsp}")
+            print(f"get_evse_status: {rsp}")
+            socket.send_string(f"get_dc_evse_status:{rsp}")
+        elif stage == "get_dc_evse_status":
+            rsp: dict = get_dc_evse_status(str(msg).strip())
+            print(f"get_dc_evse_status: {rsp}")
             socket.send_string(f"get_dc_evse_status:{rsp}")
         else:
             res: str = make_error_message("0", "NOT IMPLEMENTED")
