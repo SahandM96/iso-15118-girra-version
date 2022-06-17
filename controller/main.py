@@ -6,12 +6,17 @@ from typing import List, Optional
 import pickle
 import zmq
 from dotenv import load_dotenv
+import can
 
 from iso15118.shared.messages.datatypes import EVSEStatus, DCEVSEStatus, PVEVSEMaxPowerLimit, PVEVSEMaxCurrentLimit, \
-    PVEVSEMaxVoltageLimit
-from iso15118.shared.messages.enums import EnergyTransferModeEnum
+    PVEVSEMaxVoltageLimit, PVEVSEPresentCurrent, PVEVSEPresentVoltage, PVEVSEPeakCurrentRipple, PVEVSEMinVoltageLimit, \
+    PVEVSEMinCurrentLimit, DCEVSEChargeParameter
+from iso15118.shared.messages.enums import EnergyTransferModeEnum, Contactor
 from iso15118.shared.messages.iso15118_20.common_messages import ScheduledScheduleExchangeResParams
 from iso15118.shared.messages.datatypes import IsolationLevel, DCEVSEStatusCode, EVSENotification
+from iso15118.shared.messages.iso15118_20.common_types import RationalNumber
+from iso15118.shared.messages.iso15118_20.dc import DCChargeParameterDiscoveryResParams, \
+    BPTDCChargeParameterDiscoveryResParams
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -19,7 +24,7 @@ logger = logging.getLogger(__name__)
 context = zmq.Context()
 socket = context.socket(zmq.REP)
 socket.bind("tcp://*:5555")
-
+con
 
 # make error message template
 def make_error_message(error_code: str, error_message: str) -> str:
@@ -107,6 +112,95 @@ def get_evese_present_voltage(param):
     pass
 
 
+def is_evse_power_limit_achieved(param) -> bytes:
+    return pickle.dumps(True)
+
+
+def is_evse_voltage_limit_achieved(param) -> bytes:
+    return pickle.dumps(True)
+
+
+def is_evse_current_limit_achieved(param) -> bytes:
+    return pickle.dumps(True)
+
+
+def get_evse_present_current(param) -> bytes:
+    return pickle.dumps(PVEVSEPresentCurrent(multiplier=0, value=1, unit="A"))
+
+
+def get_evse_present_voltage(param) -> bytes:
+    return pickle.dumps(PVEVSEPresentVoltage(multiplier=0, value=230, unit="V"))
+
+
+def get_dc_evse_charge_parameter(param):
+    return pickle.dumps(DCEVSEChargeParameter(
+        dc_evse_status=DCEVSEStatus(
+            notification_max_delay=100,
+            evse_notification=EVSENotification.NONE,
+            evse_isolation_status=IsolationLevel.VALID,
+            evse_status_code=DCEVSEStatusCode.EVSE_READY,
+        ),
+        evse_maximum_power_limit=PVEVSEMaxPowerLimit(
+            multiplier=1, value=230, unit="W"
+        ),
+        evse_maximum_current_limit=PVEVSEMaxCurrentLimit(
+            multiplier=1, value=4, unit="A"
+        ),
+        evse_maximum_voltage_limit=PVEVSEMaxVoltageLimit(
+            multiplier=1, value=4, unit="V"
+        ),
+        evse_minimum_current_limit=PVEVSEMinCurrentLimit(
+            multiplier=1, value=2, unit="A"
+        ),
+        evse_minimum_voltage_limit=PVEVSEMinVoltageLimit(
+            multiplier=1, value=4, unit="V"
+        ),
+        evse_peak_current_ripple=PVEVSEPeakCurrentRipple(
+            multiplier=1, value=4, unit="A"
+        ),
+    ))
+
+
+# handle get_dc_evse_charge_parameter message
+def get_dc_charge_params_v20(param) -> bytes:
+    return pickle.dumps(DCChargeParameterDiscoveryResParams(
+        evse_max_charge_power=RationalNumber(exponent=3, value=300),
+        evse_min_charge_power=RationalNumber(exponent=0, value=100),
+        evse_max_charge_current=RationalNumber(exponent=0, value=300),
+        evse_min_charge_current=RationalNumber(exponent=0, value=10),
+        evse_max_voltage=RationalNumber(exponent=0, value=1000),
+        evse_min_voltage=RationalNumber(exponent=0, value=10),
+        evse_power_ramp_limit=RationalNumber(exponent=0, value=10),
+    )
+    )
+
+
+# handle get_dc_bpt_charge_params_v20 message
+def get_dc_bpt_charge_params_v20(param):
+    return pickle.dumps(BPTDCChargeParameterDiscoveryResParams(
+        evse_max_charge_power=RationalNumber(exponent=3, value=300),
+        evse_min_charge_power=RationalNumber(exponent=0, value=100),
+        evse_max_charge_current=RationalNumber(exponent=0, value=300),
+        evse_min_charge_current=RationalNumber(exponent=0, value=10),
+        evse_max_voltage=RationalNumber(exponent=0, value=1000),
+        evse_min_voltage=RationalNumber(exponent=0, value=10),
+        evse_max_discharge_power=RationalNumber(exponent=3, value=11),
+        evse_min_discharge_power=RationalNumber(exponent=3, value=1),
+        evse_max_discharge_current=RationalNumber(exponent=0, value=11),
+        evse_min_discharge_current=RationalNumber(exponent=0, value=0),
+    )
+    )
+
+
+# handle opening contactor message
+def open_contactor(param) -> bytes:
+    return pickle.dumps(Contactor.OPENED)
+
+
+def close_contactor(param):
+    return pickle.dumps(Contactor.OPENED)
+
+
 def main():
     while True:
         message: str = str(socket.recv()).replace("b'", "").replace("'", "")
@@ -151,6 +245,50 @@ def main():
         elif stage == "get_evse_max_current_limit":
             rsp: bytes = get_evse_max_current_limit(str(msg))
             print(f"get_evse_max_current_limit:{rsp}")
+            socket.send(rsp)
+        elif stage == "is_evse_power_limit_achieved":
+            rsp: bytes = is_evse_power_limit_achieved(str(msg))
+            print(f"is_evse_power_limit_achieved:{rsp}")
+            socket.send(rsp)
+        elif stage == "is_evse_voltage_limit_achieved":
+            rsp: bytes = is_evse_voltage_limit_achieved(str(msg))
+            print(f"is_evse_voltage_limit_achieved:{rsp}")
+            socket.send(rsp)
+        elif stage == "is_evse_current_limit_achieved":
+            rsp: bytes = is_evse_current_limit_achieved(str(msg))
+            print(f"is_evse_current_limit_achieved:{rsp}")
+            socket.send(rsp)
+        elif stage == "start_cable_check":
+            rsp: bytes = start_cable_check(str(msg))
+            print(f"start_cable_check:{rsp}")
+            socket.send(rsp)
+        elif stage == "get_evse_present_current":
+            rsp: bytes = get_evse_present_current(str(msg))
+            print(f"get_evse_present_current:{rsp}")
+            socket.send(rsp)
+        elif stage == "get_evse_present_voltage":
+            rsp: bytes = get_evse_present_voltage(str(msg))
+            print(f"get_evse_present_voltage:{rsp}")
+            socket.send(rsp)
+        elif stage == 'get_dc_evse_charge_parameter':
+            rsp: bytes = get_dc_evse_charge_parameter(str(msg))
+            print(f"get_dc_evse_charge_parameter:{rsp}")
+            socket.send(rsp)
+        elif stage == 'get_dc_charge_params_v20':
+            rsp: bytes = get_dc_charge_params_v20(str(msg))
+            print(f"get_dc_charge_params_v20:{rsp}")
+            socket.send(rsp)
+        elif stage == 'get_dc_bpt_charge_params_v20':
+            rsp: bytes = get_dc_bpt_charge_params_v20(str(msg))
+            print(f"get_dc_bpt_charge_params_v20:{rsp}")
+            socket.send(rsp)
+        elif stage == 'open_contactor':
+            rsp: bytes = open_contactor(str(msg))
+            print(f"open_contactor:{rsp}")
+            socket.send(rsp)
+        elif stage == 'close_contactor':
+            rsp: bytes = close_contactor(str(msg))
+            print(f"close_contactor:{rsp}")
             socket.send(rsp)
         else:
             res: bytes = pickle.dumps(make_error_message("0", "NOT IMPLEMENTED"))

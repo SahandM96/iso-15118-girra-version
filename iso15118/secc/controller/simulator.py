@@ -520,22 +520,24 @@ class SimEVSEController(EVSEControllerInterface):
     def close_contactor(self):
         """Overrides EVSEControllerInterface.close_contactor()."""
 
-        self.contactor = Contactor.CLOSED
+        self.contactor = pickle.loads(self.send_to_controller("close_contactor", "close"))
 
     def open_contactor(self):
         """Overrides EVSEControllerInterface.open_contactor()."""
 
-        self.contactor = Contactor.OPENED
+        self.contactor = pickle.loads(self.send_to_controller("open_contactor", "open"))
 
     def get_contactor_state(self) -> Contactor:
         """Overrides EVSEControllerInterface.get_contactor_state()."""
         return self.contactor
 
+    # changed to get data from controller
     def get_evse_status(self) -> EVSEStatus:
         """Overrides EVSEControllerInterface.get_evse_status()."""
 
         return pickle.loads(self.send_to_controller('get_evse_status', ''))
 
+    # Simple dummy function to get states
     def get_state(self, current: EVSEStatus) -> None:
         logger.info(f" \\\\ on the {current.__str__().strip()} state  //")
 
@@ -637,67 +639,51 @@ class SimEVSEController(EVSEControllerInterface):
     # |                          DC-SPECIFIC FUNCTIONS                           |
     # ============================================================================
 
+    # changed to get_dc_evse_status get from the controller
     def get_dc_evse_status(self) -> DCEVSEStatus:
         """Overrides EVSEControllerInterface.get_dc_evse_status()."""
-
         return pickle.loads(self.send_to_controller('get_dc_evse_status', ''))
 
+    # changed to get data from the controller
     def get_dc_evse_charge_parameter(self) -> DCEVSEChargeParameter:
         """Overrides EVSEControllerInterface.get_dc_evse_charge_parameter()."""
-        return DCEVSEChargeParameter(
-            dc_evse_status=DCEVSEStatus(
-                notification_max_delay=100,
-                evse_notification=EVSENotificationV2.NONE,
-                evse_isolation_status=IsolationLevel.VALID,
-                evse_status_code=DCEVSEStatusCode.EVSE_READY,
-            ),
-            evse_maximum_power_limit=PVEVSEMaxPowerLimit(
-                multiplier=1, value=230, unit="W"
-            ),
-            evse_maximum_current_limit=PVEVSEMaxCurrentLimit(
-                multiplier=1, value=4, unit="A"
-            ),
-            evse_maximum_voltage_limit=PVEVSEMaxVoltageLimit(
-                multiplier=1, value=4, unit="V"
-            ),
-            evse_minimum_current_limit=PVEVSEMinCurrentLimit(
-                multiplier=1, value=2, unit="A"
-            ),
-            evse_minimum_voltage_limit=PVEVSEMinVoltageLimit(
-                multiplier=1, value=4, unit="V"
-            ),
-            evse_peak_current_ripple=PVEVSEPeakCurrentRipple(
-                multiplier=1, value=4, unit="A"
-            ),
-        )
+        return pickle.loads(self.send_to_controller('get_dc_evse_charge_parameter', ''))
 
+    # changed to get data from the controller
     def get_evse_present_voltage(self) -> PVEVSEPresentVoltage:
         """Overrides EVSEControllerInterface.get_evse_present_voltage()."""
-        return PVEVSEPresentVoltage(multiplier=0, value=230, unit="V")
+        return pickle.loads(self.send_to_controller('get_evse_present_voltage', ''))
 
+    # changed to get data from the controller
     def get_evse_present_current(self) -> PVEVSEPresentCurrent:
         """Overrides EVSEControllerInterface.get_evse_present_current()."""
-        return PVEVSEPresentCurrent(multiplier=0, value=1, unit="A")
+        return pickle.loads(self.send_to_controller('get_evse_present_current', ''))
 
+    # TODO: implement start_cable_check()
     def start_cable_check(self):
         pass
 
+    # TODO: implement set_precharge()
     def set_precharge(self, voltage: PVEVTargetVoltage, current: PVEVTargetCurrent):
         pass
 
+    # TODO: implement send_charging_command()
     def send_charging_command(
             self, voltage: PVEVTargetVoltage, current: PVEVTargetCurrent
     ):
         pass
 
+    # changed to get data from the controller
     def is_evse_current_limit_achieved(self) -> bool:
-        return True
+        return pickle.loads(self.send_to_controller('is_evse_current_limit_achieved', ''))
 
+    # changed to get data from controller
     def is_evse_voltage_limit_achieved(self) -> bool:
-        return True
+        return pickle.loads(self.send_to_controller('is_evse_voltage_limit_achieved', ''))
 
+    # changed to get data from controller
     def is_evse_power_limit_achieved(self) -> bool:
-        return True
+        return pickle.loads(self.send_to_controller('is_evse_power_limit_achieved', ''))
 
     # changed to get data from the controller
     def get_evse_max_voltage_limit(self) -> PVEVSEMaxVoltageLimit:
@@ -711,29 +697,12 @@ class SimEVSEController(EVSEControllerInterface):
     def get_evse_max_power_limit(self) -> PVEVSEMaxPowerLimit:
         return pickle.loads(self.send_to_controller('get_evse_max_power_limit', ''))
 
+    # changed to get data from the controller
     def get_dc_charge_params_v20(self) -> DCChargeParameterDiscoveryResParams:
         """Overrides EVSEControllerInterface.get_dc_charge_params_v20()."""
-        return DCChargeParameterDiscoveryResParams(
-            evse_max_charge_power=RationalNumber(exponent=3, value=300),
-            evse_min_charge_power=RationalNumber(exponent=0, value=100),
-            evse_max_charge_current=RationalNumber(exponent=0, value=300),
-            evse_min_charge_current=RationalNumber(exponent=0, value=10),
-            evse_max_voltage=RationalNumber(exponent=0, value=1000),
-            evse_min_voltage=RationalNumber(exponent=0, value=10),
-            evse_power_ramp_limit=RationalNumber(exponent=0, value=10),
-        )
+        return pickle.loads(self.send_to_controller('get_dc_charge_params_v20', ''))
 
+    # changed to get data from the controller
     def get_dc_bpt_charge_params_v20(self) -> BPTDCChargeParameterDiscoveryResParams:
         """Overrides EVSEControllerInterface.get_dc_bpt_charge_params_v20()."""
-        return BPTDCChargeParameterDiscoveryResParams(
-            evse_max_charge_power=RationalNumber(exponent=3, value=300),
-            evse_min_charge_power=RationalNumber(exponent=0, value=100),
-            evse_max_charge_current=RationalNumber(exponent=0, value=300),
-            evse_min_charge_current=RationalNumber(exponent=0, value=10),
-            evse_max_voltage=RationalNumber(exponent=0, value=1000),
-            evse_min_voltage=RationalNumber(exponent=0, value=10),
-            evse_max_discharge_power=RationalNumber(exponent=3, value=11),
-            evse_min_discharge_power=RationalNumber(exponent=3, value=1),
-            evse_max_discharge_current=RationalNumber(exponent=0, value=11),
-            evse_min_discharge_current=RationalNumber(exponent=0, value=0),
-        )
+        return pickle.loads(self.send_to_controller('get_dc_bpt_charge_params_v20', ''))
