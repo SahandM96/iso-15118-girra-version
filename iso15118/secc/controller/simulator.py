@@ -4,6 +4,7 @@ This module contains the code to retrieve (hardware-related) data from the EVSE
 """
 import logging
 import os
+import pickle
 
 import zmq
 import json
@@ -19,7 +20,7 @@ from iso15118.secc.states.secc_state import StateSECC
 from iso15118.shared.messages.datatypes import (
     DCEVSEChargeParameter,
     DCEVSEStatus,
-    DCEVSEStatusCode,
+    DCEVSEStatusCode, EVSENotification,
 )
 from iso15118.shared.messages.datatypes import EVSENotification as EVSENotificationV2
 from iso15118.shared.messages.datatypes import (
@@ -181,7 +182,7 @@ class SimEVSEController(EVSEControllerInterface):
     # |             COMMON FUNCTIONS (FOR ALL ENERGY TRANSFER MODES)             |
     # ============================================================================
 
-    def send_to_controller(self, stage: str, messages: str) -> str:
+    def send_to_controller(self, stage: str, messages: str) -> bytes:
         context = zmq.Context()
         socket = context.socket(zmq.REQ)
         # socket.identity = u"v2g_to_controller".encode("ascii")
@@ -189,11 +190,11 @@ class SimEVSEController(EVSEControllerInterface):
             messages = ""
         socket.connect("tcp://localhost:5555")
         msg = str(stage) + ":" + str(messages)
-        socket.send_multipart([msg.encode("utf-8")])
-        rep = socket.recv_string()
+        socket.send(bytes(msg, "utf-8"))
+        rep = socket.recv()
         return rep
 
-    def controller_message_reader(self, message: str) -> Union[str, None, bool, dict,
+    def controller_message_reader(self, message: str) -> Union[bytes, str, None, bool, dict,
                                                                EnergyTransferModeEnum, DCEVSEStatus]:
         message = message.split(":")[1]
         return message
@@ -203,10 +204,10 @@ class SimEVSEController(EVSEControllerInterface):
     # ============================================================================
     def get_evse_id(self, protocol: Protocol) -> str:
         if protocol == Protocol.DIN_SPEC_70121:
-            rep = self.controller_message_reader(self.send_to_controller("get_evse_id", "DIN"))
+            return pickle.loads(self.send_to_controller("get_evse_id", "DIN"))
+
         else:
-            rep = self.controller_message_reader(self.send_to_controller("get_evse_id", "ISO15118"))
-        return rep
+            return pickle.loads(self.send_to_controller("get_evse_id", "ISO15118"))
 
     # ============================================================================
     # |                          Dynamic by Controller                           |
@@ -216,12 +217,11 @@ class SimEVSEController(EVSEControllerInterface):
     ) -> List[EnergyTransferModeEnum]:
         if protocol == Protocol.DIN_SPEC_70121:
             logger.info("get supported energy transfer mods DIN_SPEC_70121")
-            return [self.controller_message_reader(self.send_to_controller("get_supported_energy_transfer_modes",
-                                                                           "DIN"))]
+            return pickle.loads(self.send_to_controller("get_supported_energy_transfer_modes", "DIN"))
+
         else:
             logger.info("get supported energy transfer mods ISO15118")
-            return [self.controller_message_reader(self.send_to_controller("get_supported_energy_transfer_modes",
-                                                                           "ISO15118"))]
+            return pickle.loads(self.send_to_controller("get_supported_energy_transfer_modes", "ISO15118"))
 
     # TODO : Para #1
     def get_scheduled_se_params(
@@ -410,7 +410,7 @@ class SimEVSEController(EVSEControllerInterface):
 
     def is_authorised(self) -> bool:
         """Overrides EVSEControllerInterface.is_authorised()."""
-        return bool(self.controller_message_reader(self.send_to_controller("is_authorised", "true")))
+        return pickle.loads(self.send_to_controller("is_authorised", "true"))
 
     # TODO : Para #5
     def get_sa_schedule_list_dinspec(
@@ -533,8 +533,8 @@ class SimEVSEController(EVSEControllerInterface):
 
     def get_evse_status(self) -> EVSEStatus:
         """Overrides EVSEControllerInterface.get_evse_status()."""
-        rep = self.controller_message_reader(self.send_to_controller('get_evse_status', ''))
-        return rep
+
+        return pickle.loads(self.send_to_controller('get_evse_status', ''))
 
     def get_state(self, current: EVSEStatus) -> None:
         logger.info(f" \\\\ on the {current.__str__().strip()} state  //")
@@ -639,13 +639,8 @@ class SimEVSEController(EVSEControllerInterface):
 
     def get_dc_evse_status(self) -> DCEVSEStatus:
         """Overrides EVSEControllerInterface.get_dc_evse_status()."""
-        rep: dict = self.controller_message_reader(self.send_to_controller('get_dc_evse_status', ''))
-        return DCEVSEStatus(
-            evse_notification=rep['evse_notification'],
-            notification_timestamp=int(rep['notification_max_delay']),
-            evse_isolation_status=rep['evse_isolation_status'],
-            evse_status_code=rep['evse_status_code'],
-        )
+
+        return pickle.loads(self.send_to_controller('get_dc_evse_status', ''))
 
     def get_dc_evse_charge_parameter(self) -> DCEVSEChargeParameter:
         """Overrides EVSEControllerInterface.get_dc_evse_charge_parameter()."""
@@ -704,14 +699,17 @@ class SimEVSEController(EVSEControllerInterface):
     def is_evse_power_limit_achieved(self) -> bool:
         return True
 
+    # changed to get data from the controller
     def get_evse_max_voltage_limit(self) -> PVEVSEMaxVoltageLimit:
-        return PVEVSEMaxVoltageLimit(multiplier=0, value=600, unit="V")
+        return pickle.loads(self.send_to_controller('get_evse_max_voltage_limit', ''))
 
+    # changed to get data from the controller
     def get_evse_max_current_limit(self) -> PVEVSEMaxCurrentLimit:
-        return PVEVSEMaxCurrentLimit(multiplier=0, value=300, unit="A")
+        return pickle.loads(self.send_to_controller('get_evse_max_current_limit', ''))
 
+    # changed to get data from the controller
     def get_evse_max_power_limit(self) -> PVEVSEMaxPowerLimit:
-        return PVEVSEMaxPowerLimit(multiplier=1, value=1000, unit="W")
+        return pickle.loads(self.send_to_controller('get_evse_max_power_limit', ''))
 
     def get_dc_charge_params_v20(self) -> DCChargeParameterDiscoveryResParams:
         """Overrides EVSEControllerInterface.get_dc_charge_params_v20()."""
