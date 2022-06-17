@@ -24,7 +24,15 @@ logger = logging.getLogger(__name__)
 context = zmq.Context()
 socket = context.socket(zmq.REP)
 socket.bind("tcp://*:5555")
-con
+
+
+class StateOfContactor:
+
+    def __init__(self, contactor: Contactor):
+        self.contactor = contactor.OPENED
+
+
+
 
 # make error message template
 def make_error_message(error_code: str, error_message: str) -> str:
@@ -56,7 +64,7 @@ def cp_thead_message_handler(message: str) -> bytes:
     return pickle.dumps(message)
 
 
-# handle get_evse_status message
+# TODO: implement this
 def get_scheduled_se_params(message: str) -> Optional[ScheduledScheduleExchangeResParams]:
     pass
 
@@ -88,16 +96,18 @@ def get_evse_max_power_limit(param) -> bytes:
 def get_evse_max_current_limit(param) -> bytes:
     return pickle.dumps(PVEVSEMaxCurrentLimit(multiplier=0, value=300, unit="A"))
 
-
+# TODO: implement this
 def start_cable_check(param):
     pass
 
-
+# TODO: implement this
 def pre_charge(param):
     # TODO :
     pass
 
 
+
+# TODO: implement this
 def set_pre_charge_params(voltage: int, current: int):
     pass
 
@@ -108,6 +118,7 @@ def get_evse_status(param="") -> bytes:
          'evse_notification': 'TERMINATE'})
 
 
+# TODO: implement this
 def get_evese_present_voltage(param):
     pass
 
@@ -132,7 +143,7 @@ def get_evse_present_voltage(param) -> bytes:
     return pickle.dumps(PVEVSEPresentVoltage(multiplier=0, value=230, unit="V"))
 
 
-def get_dc_evse_charge_parameter(param):
+def get_dc_evse_charge_parameter(param) -> bytes:
     return pickle.dumps(DCEVSEChargeParameter(
         dc_evse_status=DCEVSEStatus(
             notification_max_delay=100,
@@ -176,7 +187,7 @@ def get_dc_charge_params_v20(param) -> bytes:
 
 
 # handle get_dc_bpt_charge_params_v20 message
-def get_dc_bpt_charge_params_v20(param):
+def get_dc_bpt_charge_params_v20(param) -> bytes:
     return pickle.dumps(BPTDCChargeParameterDiscoveryResParams(
         evse_max_charge_power=RationalNumber(exponent=3, value=300),
         evse_min_charge_power=RationalNumber(exponent=0, value=100),
@@ -194,6 +205,7 @@ def get_dc_bpt_charge_params_v20(param):
 
 # handle opening contactor message
 def open_contactor(param) -> bytes:
+
     return pickle.dumps(Contactor.OPENED)
 
 

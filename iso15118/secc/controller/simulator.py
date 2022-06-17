@@ -527,6 +527,7 @@ class SimEVSEController(EVSEControllerInterface):
 
         self.contactor = pickle.loads(self.send_to_controller("open_contactor", "open"))
 
+    # TODO : implement the following methods
     def get_contactor_state(self) -> Contactor:
         """Overrides EVSEControllerInterface.get_contactor_state()."""
         return self.contactor
