@@ -182,15 +182,19 @@ class SimEVSEController(EVSEControllerInterface):
     # |             COMMON FUNCTIONS (FOR ALL ENERGY TRANSFER MODES)             |
     # ============================================================================
 
-    def send_to_controller(self, stage: str, messages: str) -> bytes:
+    def send_to_controller(self, stage: str, messages: bytes) -> bytes:
         context = zmq.Context()
         socket = context.socket(zmq.REQ)
         # socket.identity = u"v2g_to_controller".encode("ascii")
         if messages is None:
             messages = ""
+        msg: dict = {
+            'messages': messages,
+            'stage': stage
+        }
         socket.connect("tcp://localhost:5555")
-        msg = str(stage) + ":" + str(messages)
-        socket.send(bytes(msg, "utf-8"))
+
+        socket.send(pickle.dumps(msg))
         rep = socket.recv()
         return rep
 
@@ -204,10 +208,10 @@ class SimEVSEController(EVSEControllerInterface):
     # ============================================================================
     def get_evse_id(self, protocol: Protocol) -> str:
         if protocol == Protocol.DIN_SPEC_70121:
-            return pickle.loads(self.send_to_controller("get_evse_id", "DIN"))
+            return pickle.loads(self.send_to_controller("get_evse_id", pickle.dumps({"protocol": "DIN"})))
 
         else:
-            return pickle.loads(self.send_to_controller("get_evse_id", "ISO15118"))
+            return pickle.loads(self.send_to_controller("get_evse_id", pickle.dumps({"protocol": "ISO15118"})))
 
     # ============================================================================
     # |                          Dynamic by Controller                           |
@@ -217,11 +221,13 @@ class SimEVSEController(EVSEControllerInterface):
     ) -> List[EnergyTransferModeEnum]:
         if protocol == Protocol.DIN_SPEC_70121:
             logger.info("get supported energy transfer mods DIN_SPEC_70121")
-            return pickle.loads(self.send_to_controller("get_supported_energy_transfer_modes", "DIN"))
+            return pickle.loads(
+                self.send_to_controller("get_supported_energy_transfer_modes", pickle.dumps({"protocol": "DIN"})))
 
         else:
             logger.info("get supported energy transfer mods ISO15118")
-            return pickle.loads(self.send_to_controller("get_supported_energy_transfer_modes", "ISO15118"))
+            return pickle.loads(
+                self.send_to_controller("get_supported_energy_transfer_modes", pickle.dumps({"protocol": "ISO15118"})))
 
     # TODO : Para #1
     def get_scheduled_se_params(
@@ -410,7 +416,7 @@ class SimEVSEController(EVSEControllerInterface):
 
     def is_authorised(self) -> bool:
         """Overrides EVSEControllerInterface.is_authorised()."""
-        return pickle.loads(self.send_to_controller("is_authorised", "true"))
+        return pickle.loads(self.send_to_controller("is_authorised", pickle.dumps({"resp": "true"})))
 
     # TODO : Para #5
     def get_sa_schedule_list_dinspec(
@@ -520,23 +526,25 @@ class SimEVSEController(EVSEControllerInterface):
     def close_contactor(self):
         """Overrides EVSEControllerInterface.close_contactor()."""
 
-        self.contactor = pickle.loads(self.send_to_controller("close_contactor", "close"))
+        self.contactor = pickle.loads(self.send_to_controller("close_contactor", pickle.dumps({"state": "close"})))
 
     def open_contactor(self):
         """Overrides EVSEControllerInterface.open_contactor()."""
 
-        self.contactor = pickle.loads(self.send_to_controller("open_contactor", "open"))
+        self.contactor = pickle.loads(self.send_to_controller("open_contactor", pickle.dumps({"state": "open"})))
 
     # TODO : implement the following methods
     def get_contactor_state(self) -> Contactor:
         """Overrides EVSEControllerInterface.get_contactor_state()."""
-        return self.contactor
+        tmp = pickle.loads(self.send_to_controller("get_contactor_state", pickle.dumps({"state": "open"})))
+
+        return Contactor.CLOSED
 
     # changed to get data from controller
     def get_evse_status(self) -> EVSEStatus:
         """Overrides EVSEControllerInterface.get_evse_status()."""
 
-        return pickle.loads(self.send_to_controller('get_evse_status', ''))
+        return pickle.loads(self.send_to_controller('get_evse_status', pickle.dumps({'null': 'null'})))
 
     # Simple dummy function to get states
     def get_state(self, current: EVSEStatus) -> None:
@@ -643,22 +651,22 @@ class SimEVSEController(EVSEControllerInterface):
     # changed to get_dc_evse_status get from the controller
     def get_dc_evse_status(self) -> DCEVSEStatus:
         """Overrides EVSEControllerInterface.get_dc_evse_status()."""
-        return pickle.loads(self.send_to_controller('get_dc_evse_status', ''))
+        return pickle.loads(self.send_to_controller('get_dc_evse_status', pickle.dumps({'null': 'null'})))
 
     # changed to get data from the controller
     def get_dc_evse_charge_parameter(self) -> DCEVSEChargeParameter:
         """Overrides EVSEControllerInterface.get_dc_evse_charge_parameter()."""
-        return pickle.loads(self.send_to_controller('get_dc_evse_charge_parameter', ''))
+        return pickle.loads(self.send_to_controller('get_dc_evse_charge_parameter', pickle.dumps({'null': 'null'})))
 
     # changed to get data from the controller
     def get_evse_present_voltage(self) -> PVEVSEPresentVoltage:
         """Overrides EVSEControllerInterface.get_evse_present_voltage()."""
-        return pickle.loads(self.send_to_controller('get_evse_present_voltage', ''))
+        return pickle.loads(self.send_to_controller('get_evse_present_voltage', pickle.dumps({'null': 'null'})))
 
     # changed to get data from the controller
     def get_evse_present_current(self) -> PVEVSEPresentCurrent:
         """Overrides EVSEControllerInterface.get_evse_present_current()."""
-        return pickle.loads(self.send_to_controller('get_evse_present_current', ''))
+        return pickle.loads(self.send_to_controller('get_evse_present_current', pickle.dumps({'null': 'null'})))
 
     # TODO: implement start_cable_check()
     def start_cable_check(self):
@@ -666,7 +674,8 @@ class SimEVSEController(EVSEControllerInterface):
 
     # TODO: implement set_precharge()
     def set_precharge(self, voltage: PVEVTargetVoltage, current: PVEVTargetCurrent):
-        pass
+        self.send_to_controller('set_precharge', pickle.dumps({'voltage': voltage, 'current': current}))
+
 
     # TODO: implement send_charging_command()
     def send_charging_command(
@@ -676,34 +685,34 @@ class SimEVSEController(EVSEControllerInterface):
 
     # changed to get data from the controller
     def is_evse_current_limit_achieved(self) -> bool:
-        return pickle.loads(self.send_to_controller('is_evse_current_limit_achieved', ''))
+        return pickle.loads(self.send_to_controller('is_evse_current_limit_achieved', pickle.dumps({"null": "null"})))
 
     # changed to get data from controller
     def is_evse_voltage_limit_achieved(self) -> bool:
-        return pickle.loads(self.send_to_controller('is_evse_voltage_limit_achieved', ''))
+        return pickle.loads(self.send_to_controller('is_evse_voltage_limit_achieved', pickle.dumps({"null": "null"})))
 
     # changed to get data from controller
     def is_evse_power_limit_achieved(self) -> bool:
-        return pickle.loads(self.send_to_controller('is_evse_power_limit_achieved', ''))
+        return pickle.loads(self.send_to_controller('is_evse_power_limit_achieved', pickle.dumps({"null": "null"})))
 
     # changed to get data from the controller
     def get_evse_max_voltage_limit(self) -> PVEVSEMaxVoltageLimit:
-        return pickle.loads(self.send_to_controller('get_evse_max_voltage_limit', ''))
+        return pickle.loads(self.send_to_controller('get_evse_max_voltage_limit', pickle.dumps({"null": "null"})))
 
     # changed to get data from the controller
     def get_evse_max_current_limit(self) -> PVEVSEMaxCurrentLimit:
-        return pickle.loads(self.send_to_controller('get_evse_max_current_limit', ''))
+        return pickle.loads(self.send_to_controller('get_evse_max_current_limit', pickle.dumps({"null": "null"})))
 
     # changed to get data from the controller
     def get_evse_max_power_limit(self) -> PVEVSEMaxPowerLimit:
-        return pickle.loads(self.send_to_controller('get_evse_max_power_limit', ''))
+        return pickle.loads(self.send_to_controller('get_evse_max_power_limit', pickle.dumps({"null": "null"})))
 
     # changed to get data from the controller
     def get_dc_charge_params_v20(self) -> DCChargeParameterDiscoveryResParams:
         """Overrides EVSEControllerInterface.get_dc_charge_params_v20()."""
-        return pickle.loads(self.send_to_controller('get_dc_charge_params_v20', ''))
+        return pickle.loads(self.send_to_controller('get_dc_charge_params_v20', pickle.dumps({"null": "null"})))
 
     # changed to get data from the controller
     def get_dc_bpt_charge_params_v20(self) -> BPTDCChargeParameterDiscoveryResParams:
         """Overrides EVSEControllerInterface.get_dc_bpt_charge_params_v20()."""
-        return pickle.loads(self.send_to_controller('get_dc_bpt_charge_params_v20', ''))
+        return pickle.loads(self.send_to_controller('get_dc_bpt_charge_params_v20', pickle.dumps({"null": "null"})))

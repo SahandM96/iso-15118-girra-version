@@ -551,7 +551,7 @@ class SimEVController(EVControllerInterface):
         return self.continue_charging()
 
     def is_precharged(self, present_voltage_evse: PVEVSEPresentVoltage) -> bool:
-        return True
+        return False
 
     def get_dc_ev_power_delivery_parameter_dinspec(
         self,

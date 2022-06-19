@@ -240,9 +240,9 @@ class PreCharge:
 
     def __init__(
             self,
-            BusHandler: Bus,
-            Target_Voltage: int,
-            Maximum_Current: int,
+            bus_handler: BusABC,
+            target_voltage: int,
+            maximum_current: int,
     ):
         MsgProp_Precharge = CanBaseModel(
             Message_FrameID.PRECHARGE_ID,
