@@ -676,12 +676,11 @@ class SimEVSEController(EVSEControllerInterface):
     def set_precharge(self, voltage: PVEVTargetVoltage, current: PVEVTargetCurrent):
         self.send_to_controller('set_precharge', pickle.dumps({'voltage': voltage, 'current': current}))
 
-
     # TODO: implement send_charging_command()
     def send_charging_command(
             self, voltage: PVEVTargetVoltage, current: PVEVTargetCurrent
     ):
-        pass
+        self.send_to_controller('send_charging_command', pickle.dumps({'voltage': voltage, 'current': current}))
 
     # changed to get data from the controller
     def is_evse_current_limit_achieved(self) -> bool:

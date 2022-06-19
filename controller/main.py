@@ -32,6 +32,22 @@ InterfaceBus = can.Bus(
 )
 
 
+def decode_voltage_and_current(param: dict) -> (int, int):
+    voltage: PVEVTargetVoltage = param.get('voltage')
+    current: PVEVTargetCurrent = param.get('current')
+
+    vr: int = voltage.value * 10 ^ voltage.multiplier
+    cr: int = current.value * 10 ^ current.multiplier
+    # return Voltage and Current
+    return vr, cr
+
+
+def send_charging_command(param: dict) -> None:
+    vr, cr = decode_voltage_and_current(param)
+    pc = PreCharge(InterfaceBus, vr, cr)
+    pc.SendPeriodic()
+
+
 # make error message template
 def make_error_message(error_code: str, error_message: str) -> str:
     return "ERROR: " + error_code + ":" + error_message
@@ -100,11 +116,6 @@ def start_cable_check(param: dict):
     pass
 
 
-# TODO: implement this
-def pre_charge(param: dict):
-    pass
-
-
 canCon = zmq.Context()
 canSocket = canCon.socket(zmq.REQ)
 canSocket.connect("tcp://localhost:5556")
@@ -112,11 +123,7 @@ canSocket.connect("tcp://localhost:5556")
 
 def set_precharge(param: dict):
     # socket.identity = u"v2g_to_controller".encode("ascii")
-    voltage: PVEVTargetVoltage = param.get('voltage')
-    current: PVEVTargetCurrent = param.get('current')
-
-    vr: int = voltage.value * 10 ^ voltage.multiplier
-    cr: int = current.value * 10 ^ current.multiplier
+    vr, cr = decode_voltage_and_current(param)
     pc = PreCharge(InterfaceBus, vr, cr)
     pc.SendPeriodic()
 
@@ -368,6 +375,11 @@ def main():
         elif stage == 'set_precharge':
             msg: dict = pickle.loads(message)
             set_precharge(msg)
+            print(f"get_contactor_state: Called")
+            socket.send(bytes('ok', 'utf-8'))
+        elif stage == 'send_charging_command':
+            msg: dict = pickle.loads(message)
+            send_charging_command(msg)
             print(f"get_contactor_state: Called")
             socket.send(bytes('ok', 'utf-8'))
         else:
