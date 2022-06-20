@@ -15,7 +15,5 @@ class MyEventHandler(FileSystemEventHandler):
         what = 'directory' if event.is_directory else 'file'
         if what == 'file':
             if event.src_path == '/home/sahandm96/watch_dir/cp_adc':
-                # with open("/home/sahandm96/watch_dir/cp_adc") as file_cp_adc:
-                #     value = str(file_cp_adc.read()).strip()
-                #     file_cp_adc.close()
+                logger.info("File modified: %s", event.src_path)
                 zmq_run_server

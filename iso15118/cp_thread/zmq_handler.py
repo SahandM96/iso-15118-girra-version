@@ -1,18 +1,20 @@
 """ import in here """
+import pickle
 import logging
 import zmq
-from iso15118.cp_thread.value_metric import get_cp_value
+from iso15118.cp_thread.cp_value_metric import get_cp_value
 from threading import Thread
 
 logger = logging.getLogger(__name__)
 
 
 # set stage on messages
-def zmq_thead_message_stage_handler(msg="") -> str:
+def zmq_thead_message_stage_handler(msg="") -> bytes:
+    
     if msg != "":
-        return f"cp_thead:{msg}"
+        return pickle.dumps(f"cp_thead:{msg}")
     else:
-        return f"cp_thead:not_set"
+        return pickle.dumps(f"cp_thead:not_set")
 
 
 def zmq_thread():
@@ -28,12 +30,12 @@ def zmq_run_server(msg=""):
 
     context = zmq.Context()
     socket = context.socket(zmq.REQ)
-    # socket.identity = u"cp_handler_to_controller".encode("ascii")
     socket.connect("tcp://localhost:5555")
+    socket.send(zmq_thead_message_stage_handler(str(get_cp_value())))
+    message: str = socket.recv()
+    logger.info(message)
+    rep :dict = pickle.loads(message)
+    stage = rep["stage"]
+    message = rep["message"]
+    logger.info(f"stage: {stage} message: {message}")
 
-    socket.send_string(zmq_thead_message_stage_handler(str(get_cp_value())))
-
-    message: str = socket.recv_string()
-    stage, message = message.split(":")
-
-    print("Received request: %s", message)

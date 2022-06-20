@@ -3,7 +3,8 @@ import logging
 import time
 from watchdog.observers import Observer
 
-from iso15118.cp_thread.handler import MyEventHandler
+from iso15118.cp_thread.file_changes_handler import MyEventHandler
+
 logger = logging.getLogger(__name__)
 PATH = "/home/sahandm96/watch_dir/"
 

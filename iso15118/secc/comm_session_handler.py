@@ -16,7 +16,7 @@ import socket
 import time
 from asyncio.streams import StreamReader, StreamWriter
 from typing import Dict, List, Optional, Tuple, Union
-from iso15118.cp_thread.value_metric import value_metric
+from iso15118.cp_thread.cp_value_metric import value_metric
 
 from iso15118.secc.controller.interface import EVSEControllerInterface
 from iso15118.secc.failed_responses import (

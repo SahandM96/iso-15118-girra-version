@@ -358,6 +358,7 @@ class ChargeLoop:
 
     def __init__(
             self,
+            bus_handler: BusABC,
             Target_Voltage,
             Target_Current,
             State_of_Charge,
@@ -372,18 +373,19 @@ class ChargeLoop:
         self.Target_Voltage = Target_Voltage
         self.Target_Current = Target_Current
         self.State_of_Charge = State_of_Charge
-        self.MsgFrame: bytes = []
+        self.MsgFrame: bytearray(Message_DLC.CHARGINGLOOP_DLC)
+        self.Msg: Message = []
+
         self._Creat_Frame_()
 
         self.Msg = Message(
             arbitration_id=MsgProp_ChargeLoop.FrameID,
             dlc=MsgProp_ChargeLoop.DLC,
             is_extended_id=True,
-            data=self.MsgFrame
+            data=self.MsgFrames
         )
 
     def _Creat_Frame_(self):
-        self.MsgFrame = bytearray(Message_DLC.CHARGINGLOOP_DLC)
 
         self.MsgFrame[0] = (self.Target_Voltage & 0xFF)
         self.MsgFrame[1] = ((self.Target_Voltage >> 8) & 0xFF)

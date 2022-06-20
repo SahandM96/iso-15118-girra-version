@@ -185,27 +185,21 @@ class SimEVSEController(EVSEControllerInterface):
     def send_to_controller(self, stage: str, messages: bytes) -> bytes:
         context = zmq.Context()
         socket = context.socket(zmq.REQ)
-        # socket.identity = u"v2g_to_controller".encode("ascii")
         if messages is None:
             messages = ""
         msg: dict = {
             'messages': messages,
             'stage': stage
         }
-        socket.connect("tcp://localhost:5555")
-
+        socket.connect(os.environ.get('ZMQ_FOR_CP_AND_V2G'))
         socket.send(pickle.dumps(msg))
         rep = socket.recv()
         return rep
 
-    def controller_message_reader(self, message: str) -> Union[bytes, str, None, bool, dict,
-                                                               EnergyTransferModeEnum, DCEVSEStatus]:
-        message = message.split(":")[1]
-        return message
-
     # ============================================================================
     # |                          Dynamic by Controller                           |
     # ============================================================================
+    # DONE : Implement the following functions By Controller
     def get_evse_id(self, protocol: Protocol) -> str:
         if protocol == Protocol.DIN_SPEC_70121:
             return pickle.loads(self.send_to_controller("get_evse_id", pickle.dumps({"protocol": "DIN"})))
@@ -216,6 +210,7 @@ class SimEVSEController(EVSEControllerInterface):
     # ============================================================================
     # |                          Dynamic by Controller                           |
     # ============================================================================
+    # DONE : Implement the following functions By Controller
     def get_supported_energy_transfer_modes(
             self, protocol: Protocol
     ) -> List[EnergyTransferModeEnum]:
@@ -533,7 +528,7 @@ class SimEVSEController(EVSEControllerInterface):
 
         self.contactor = pickle.loads(self.send_to_controller("open_contactor", pickle.dumps({"state": "open"})))
 
-    # TODO : implement the following methods
+
     def get_contactor_state(self) -> Contactor:
         """Overrides EVSEControllerInterface.get_contactor_state()."""
         tmp = pickle.loads(self.send_to_controller("get_contactor_state", pickle.dumps({"state": "open"})))
@@ -548,7 +543,7 @@ class SimEVSEController(EVSEControllerInterface):
 
     # Simple dummy function to get states
     def get_state(self, current: EVSEStatus) -> None:
-        logger.info(f" \\\\ on the {current.__str__().strip()} state  //")
+        self.send_to_controller('get_state',pickle.dumps({'state':current}))
 
     # ============================================================================
     # |                          AC-SPECIFIC FUNCTIONS                           |
@@ -680,7 +675,9 @@ class SimEVSEController(EVSEControllerInterface):
     def send_charging_command(
             self, voltage: PVEVTargetVoltage, current: PVEVTargetCurrent
     ):
-        self.send_to_controller('send_charging_command', pickle.dumps({'voltage': voltage, 'current': current}))
+        print(f'-----------------------  soc: {EVDataContext.soc} -----------------------')
+        self.send_to_controller('send_charging_command', pickle.dumps({'voltage': voltage, 'current': current,
+                                                                       'soc': EVDataContext.soc}))
 
     # changed to get data from the controller
     def is_evse_current_limit_achieved(self) -> bool:
