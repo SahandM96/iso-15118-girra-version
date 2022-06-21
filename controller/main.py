@@ -3,26 +3,27 @@ import logging
 import math
 import time
 import os
+from enum import IntEnum
 from typing import List, Optional
 import pickle
+from urllib import response
 import zmq
 from dotenv import load_dotenv
 import can
 
-from controller.Messages import PreCharge, ChargeLoop
+from controller.Messages import PreCharge, ChargeLoop, InsulationTest
 from iso15118.shared.messages.datatypes import EVSEStatus, DCEVSEStatus, PVEVSEMaxPowerLimit, PVEVSEMaxCurrentLimit, \
     PVEVSEMaxVoltageLimit, PVEVSEPresentCurrent, PVEVSEPresentVoltage, PVEVSEPeakCurrentRipple, PVEVSEMinVoltageLimit, \
     PVEVSEMinCurrentLimit, DCEVSEChargeParameter, PVEVTargetVoltage, PVEVTargetCurrent
-from iso15118.shared.messages.enums import EnergyTransferModeEnum
+from iso15118.shared.messages.enums import EnergyTransferModeEnum, Contactor
 from iso15118.shared.messages.iso15118_20.common_messages import ScheduledScheduleExchangeResParams
 from iso15118.shared.messages.datatypes import IsolationLevel, DCEVSEStatusCode, EVSENotification
 from iso15118.shared.messages.iso15118_20.common_types import RationalNumber
 from iso15118.shared.messages.iso15118_20.dc import DCChargeParameterDiscoveryResParams, \
     BPTDCChargeParameterDiscoveryResParams
 
-
-import contactor_functions as contactor
 import utils
+
 load_dotenv()
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,37 @@ InterfaceBus = can.Bus(
     interface='socketcan',
     channel='vcan0'
 )
+canCon = zmq.Context()
+canSocket = canCon.socket(zmq.REQ)
+canSocket.connect("tcp://localhost:5556")
 
+
+def open_contactor(param: dict) -> bytes:
+    contactor_status = open(os.environ.get('CONTACTOR_STATUS_CODE'), 'w')
+    logger.info("Contactor is opened")
+    contactor_status.write("1")
+    contactor_status.close()
+    return pickle.dumps(Contactor.OPENED)
+
+
+def close_contactor(param: dict) -> bytes:
+    contactor_status = open(os.environ.get('CONTACTOR_STATUS_CODE'), 'w')
+    logger.info("Contactor is closed")
+    contactor_status.write("0")
+    contactor_status.close()
+    return pickle.dumps(Contactor.CLOSED)
+
+
+def get_contactor_state(param: dict) -> bytes:
+    contactor_status = open(os.environ.get('CONTACTOR_STATUS_CODE'), 'r')
+    status = contactor_status.read()
+    contactor_status.close()
+    logger.info("Contactor is {}".format(status))
+    # TODO: change it to be really status
+    # if status == 1:
+    #     return pickle.dumps(Contactor.CLOSED)
+    # return pickle.dumps(Contactor.OPENED)
+    return pickle.dumps(Contactor.CLOSED)
 
 
 # send charge command
@@ -41,7 +72,7 @@ def send_charging_command(param: dict) -> None:
     print(param.get('soc'))
     soc = param.get('soc')
     vr, cr = utils.decode_voltage_and_current(param)
-    print('Bus send Voltage: {vr} , Current: {cr} SOC: {}'.format(vr=vr, cr=cr, soc=soc))
+    print(f"Bus send Voltage: {vr} , Current: {cr} SOC: {soc}")
     # pc = ChargeLoop(InterfaceBus, vr, cr, soc)
 
 
@@ -85,18 +116,21 @@ def is_authorised(message: dict) -> bytes:
     return pickle.dumps(True)
 
 
-
-
 # handle get_dc_evse_status message
 def get_dc_evse_status(param: dict) -> bytes:
-    #TODO : changes state must change characteristics of EVSE status
-    jfile = DCEVSEStatus(
+    if get_state({'null': 'null'}):
+        return pickle.dumps(DCEVSEStatus(
+            evse_notification=EVSENotification.NONE,
+            notification_max_delay=0,
+            evse_isolation_status=IsolationLevel.VALID,
+            evse_status_code=DCEVSEStatusCode.EVSE_READY,
+        ))
+    return pickle.dumps(DCEVSEStatus(
         evse_notification=EVSENotification.NONE,
         notification_max_delay=0,
-        evse_isolation_status=IsolationLevel.INVALID,
-        evse_status_code=DCEVSEStatusCode.EVSE_ISOLATION_MONITORING_ACTIVE,
-    )
-    return pickle.dumps(jfile, protocol=pickle.HIGHEST_PROTOCOL, fix_imports=True)
+        evse_isolation_status=IsolationLevel.VALID,
+        evse_status_code=DCEVSEStatusCode.EVSE_READY,
+    ))
 
 
 def get_evse_max_voltage_limit(param: dict) -> bytes:
@@ -113,12 +147,10 @@ def get_evse_max_current_limit(param: dict) -> bytes:
 
 # TODO: implement this
 def start_cable_check(param: dict):
-    pass
-
-
-canCon = zmq.Context()
-canSocket = canCon.socket(zmq.REQ)
-canSocket.connect("tcp://localhost:5556")
+    tv = os.environ.get("TEST_VOLTAGE")
+    # pc = InsulationTest(InterfaceBus,tv)
+    print(f'Bus send Test Voltage: {tv}')
+    # pc.SendPeriodic()
 
 
 def set_precharge(param: dict):
@@ -218,9 +250,10 @@ def get_dc_bpt_charge_params_v20(param: dict) -> bytes:
     )
     )
 
+
 def get_state(param: dict) -> None:
     print('state is : {}'.format(param.get('state')))
-    
+
 
 def main():
     while True:
@@ -289,9 +322,8 @@ def main():
             socket.send(rsp)
         elif stage == "start_cable_check":
             msg: dict = pickle.loads(message)
-            rsp: bytes = start_cable_check(msg)
-            print(f"start_cable_check: Called")
-            socket.send(rsp)
+            _: bytes = start_cable_check(msg)
+            socket.send(b"start_cable_check: Called")
         elif stage == "get_evse_present_current":
             msg: dict = pickle.loads(message)
             rsp: bytes = get_evse_present_current(msg)
@@ -317,40 +349,35 @@ def main():
             rsp: bytes = get_dc_bpt_charge_params_v20(msg)
             print(f"get_dc_bpt_charge_params_v20: Called")
             socket.send(rsp)
-        elif stage == 'open_contactor':
-            msg: dict = pickle.loads(message)
-            rsp: bytes = contactor.open_contactor(msg)
-            print(f"open_contactor: Called")
-            socket.send(rsp)
         elif stage == 'close_contactor':
             msg: dict = pickle.loads(message)
-            rsp: bytes = contactor.close_contactor(msg)
-            print(f"close_contactor: Called")
+            rsp: bytes = close_contactor(msg)
+            print(f"close_contactor: {pickle.loads(rsp)}")
             socket.send(rsp)
         elif stage == 'open_contactor':
             msg: dict = pickle.loads(message)
-            rsp: bytes = contactor.open_contactor(msg)
-            print(f"open_contactor: Called")
+            rsp: bytes = open_contactor(msg)
+            print(f"open_contactor: {pickle.loads(rsp)}")
             socket.send(rsp)
         elif stage == 'get_contactor_state':
             msg: dict = pickle.loads(message)
-            rsp: bytes = contactor.get_contactor_state(msg)
-            print(f"get_contactor_state: Called")
+            rsp: bytes = get_contactor_state(msg)
+            print(f"get_contactor_state: {pickle.loads(rsp)}")
             socket.send(rsp)
         elif stage == 'set_precharge':
             msg: dict = pickle.loads(message)
             set_precharge(msg)
-            print(f"get_contactor_state: Called")
+            print(f"set_precharge: Called")
             socket.send(bytes('ok', 'utf-8'))
         elif stage == 'send_charging_command':
             msg: dict = pickle.loads(message)
             send_charging_command(msg)
-            print(f"get_contactor_state: Called")
+            print(f"send_charging_command: Called")
             socket.send(bytes('ok', 'utf-8'))
         elif stage == 'get_state':
             msg: dict = pickle.loads(message)
-            rsp: bytes = get_state(msg)
-            print(f"get_status: Called")
+            get_state(msg)
+            print(f"get_status: {msg.get('state')}")
             socket.send(bytes('ok', 'utf-8'))
         else:
             res: bytes = pickle.dumps(make_error_message("0", "NOT IMPLEMENTED"))

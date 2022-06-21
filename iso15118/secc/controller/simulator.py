@@ -503,10 +503,12 @@ class SimEVSEController(EVSEControllerInterface):
             meter_timestamp=time.time(),
         )
 
+    # TODO : Check what is going on here #1
     def get_supported_providers(self) -> Optional[List[ProviderID]]:
         """Overrides EVSEControllerInterface.get_supported_providers()."""
         return None
 
+    # TODO : Check what is going on here #2
     def set_hlc_charging(self, is_ongoing: bool) -> None:
         """Overrides EVSEControllerInterface.set_hlc_charging()."""
         pass
@@ -518,32 +520,30 @@ class SimEVSEController(EVSEControllerInterface):
         """Overrides EVSEControllerInterface.service_renegotiation_supported()."""
         return False
 
+    # Done : it's Chenged to get data from the controller
     def close_contactor(self):
         """Overrides EVSEControllerInterface.close_contactor()."""
 
         self.contactor = pickle.loads(self.send_to_controller("close_contactor", pickle.dumps({"state": "close"})))
 
+    # Done : it's Chenged to get data from the controller
     def open_contactor(self):
         """Overrides EVSEControllerInterface.open_contactor()."""
 
         self.contactor = pickle.loads(self.send_to_controller("open_contactor", pickle.dumps({"state": "open"})))
 
-
+    # Done : it's Chenged to get data from the controller
     def get_contactor_state(self) -> Contactor:
         """Overrides EVSEControllerInterface.get_contactor_state()."""
-        tmp = pickle.loads(self.send_to_controller("get_contactor_state", pickle.dumps({"state": "open"})))
-
-        return Contactor.CLOSED
+        return pickle.loads(self.send_to_controller("get_contactor_state", pickle.dumps({"state": "open"})))
 
     # changed to get data from controller
     def get_evse_status(self) -> EVSEStatus:
-        """Overrides EVSEControllerInterface.get_evse_status()."""
-
         return pickle.loads(self.send_to_controller('get_evse_status', pickle.dumps({'null': 'null'})))
 
     # Simple dummy function to get states
     def get_state(self, current: EVSEStatus) -> None:
-        self.send_to_controller('get_state',pickle.dumps({'state':current}))
+        self.send_to_controller('get_state', pickle.dumps({'state': current}))
 
     # ============================================================================
     # |                          AC-SPECIFIC FUNCTIONS                           |
@@ -665,7 +665,7 @@ class SimEVSEController(EVSEControllerInterface):
 
     # TODO: implement start_cable_check()
     def start_cable_check(self):
-        pass
+        self.send_to_controller('start_cable_check', pickle.dumps({'null': 'null'}))
 
     # TODO: implement set_precharge()
     def set_precharge(self, voltage: PVEVTargetVoltage, current: PVEVTargetCurrent):
@@ -675,7 +675,6 @@ class SimEVSEController(EVSEControllerInterface):
     def send_charging_command(
             self, voltage: PVEVTargetVoltage, current: PVEVTargetCurrent
     ):
-        print(f'-----------------------  soc: {EVDataContext.soc} -----------------------')
         self.send_to_controller('send_charging_command', pickle.dumps({'voltage': voltage, 'current': current,
                                                                        'soc': EVDataContext.soc}))
 

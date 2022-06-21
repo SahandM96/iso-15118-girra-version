@@ -1,4 +1,3 @@
-import can
 from enums import (
     Message_DIR,
     Message_DLC,
@@ -18,7 +17,6 @@ from can import (
     BusABC,
     ModifiableCyclicTaskABC,
 )
-
 
 class CanBaseModel:
     def __init__(self,
@@ -170,8 +168,8 @@ class InsulationTest:
 
     def __init__(
             self,
-            BusHandler: Bus,
-            Test_Voltage: int,
+            bus_handler: BusABC,
+            test_voltage: int,
     ):
         MsgProp_InsulationTest = CanBaseModel(
             Message_FrameID.INSULATIONTEST_ID,
@@ -180,8 +178,8 @@ class InsulationTest:
             Message_DIR.IN
         )
         self.BusTask: ModifiableCyclicTaskABC = None
-        self.BusHandler: Bus = BusHandler
-        self.TestVoltage = Test_Voltage
+        self.BusHandler: Bus = bus_handler
+        self.TestVoltage = test_voltage
         self.MsgFrame = bytearray(Message_DLC.INSULATIONTEST_DLC)
         self._Creat_Frame_()
 
@@ -252,9 +250,9 @@ class PreCharge:
         )
 
         self.BusTask: ModifiableCyclicTaskABC = None
-        self.BusHandler: Bus = BusHandler
-        self.Target_Voltage = Target_Voltage
-        self.Maximum_Current = Maximum_Current
+        self.BusHandler: Bus = bus_handler
+        self.Target_Voltage = target_voltage
+        self.Maximum_Current = maximum_current
         self.MsgFrame = bytearray(Message_DLC.PRECHARGE_DLC)
         self._Creat_Frame_()
 
