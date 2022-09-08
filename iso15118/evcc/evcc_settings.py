@@ -77,7 +77,8 @@ class Config:
         self.supported_protocols = [
             Protocol.ISO_15118_2,
             Protocol.DIN_SPEC_70121,
-            Protocol.ISO_15118_20_DC,
+            Protocol.ISO_15118_20_AC,
+
         ]
 
         # Indicates the maximum number of entries the EVCC supports within the

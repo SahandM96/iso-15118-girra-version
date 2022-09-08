@@ -12,13 +12,11 @@ at once, i.e. creating, storing, and deleting those sessions as needed.
 
 import asyncio
 import logging
+import pickle
 import socket
 from asyncio.streams import StreamReader, StreamWriter
 from typing import Dict, List, Optional, Tuple, Union
 
-from iso15118.secc.states.cp_handler import (
-    check_cp, CP
-)
 from iso15118.secc.controller.interface import EVSEControllerInterface
 from iso15118.secc.failed_responses import (
     init_failed_responses_din_spec_70121,
@@ -28,6 +26,7 @@ from iso15118.secc.failed_responses import (
 from iso15118.secc.secc_settings import Config
 from iso15118.secc.transport.tcp_server import TCPServer
 from iso15118.secc.transport.udp_server import UDPServer
+from iso15118.shared.messages.zmq_handler import ZMQHandler
 from iso15118.shared.comm_session import V2GCommunicationSession
 from iso15118.shared.exceptions import InvalidSDPRequestError, InvalidV2GTPMessageError
 from iso15118.shared.exi_codec import EXI
@@ -55,7 +54,7 @@ from iso15118.shared.notifications import (
     TCPClientNotification,
     UDPPacketNotification,
 )
-from iso15118.shared.utils import cancel_task, wait_till_finished
+from iso15118.shared.utils import cancel_task, wait_for_tasks
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +162,7 @@ class CommunicationSessionHandler:
         self.tcp_server = None
         self.config = config
         self.evse_controller = evse_controller
+        self.zmq = ZMQHandler()
 
         # Set the selected EXI codec implementation
         EXI().set_exi_codec(codec)
@@ -198,7 +198,7 @@ class CommunicationSessionHandler:
 
         logger.info("Communication session handler started")
 
-        await wait_till_finished(self.list_of_tasks)
+        await wait_for_tasks(self.list_of_tasks)
 
     async def get_from_rcv_queue(self, queue: asyncio.Queue):
         """
@@ -245,7 +245,11 @@ class CommunicationSessionHandler:
                     self.comm_sessions[notification.ip_address] = (comm_session, task)
                 elif isinstance(notification, StopNotification):
                     try:
+                        await self.zmq.send_message(state="finally",
+                                                    message=pickle.dumps("Finally done"),
+                                                    )
                         await cancel_task(
+
                             self.comm_sessions[notification.peer_ip_address][1]
                         )
                         del self.comm_sessions[notification.peer_ip_address]
@@ -261,6 +265,7 @@ class CommunicationSessionHandler:
             # TODO: What about an except here?
             finally:
                 queue.task_done()
+
 
     async def process_incoming_udp_packet(self, message: UDPPacketNotification):
         """
@@ -323,24 +328,3 @@ class CommunicationSessionHandler:
         logger.debug(f"Sending SDPResponse: {sdp_response}")
 
         self.udp_server.send(v2gtp_msg, message.addr)
-
-    @staticmethod
-    async def is_cp_ok() -> bool:
-        if check_cp == CP.D:
-            logger.warning("CP is set to D, no communication possible")
-            return False
-        if check_cp == CP.B:
-            logger.warning("CP is set to B, communication possible")
-            return True
-        logger.warning("CP is set to unknown value, no communication possible")
-        return False
-
-    async def restart_session_handler(self):
-        """
-        This method is necessary, because python does not allow
-        async def __init__.
-        Therefore, we need to create a separate async method to be our
-        constructor.
-        """
-        logger.info("Session handler restarted")
-        await self.start_session_handler()

@@ -57,7 +57,7 @@ from iso15118.shared.notifications import (
     StopNotification,
     UDPPacketNotification,
 )
-from iso15118.shared.utils import cancel_task, wait_till_finished
+from iso15118.shared.utils import cancel_task, wait_for_tasks
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +157,10 @@ class EVCCCommunicationSession(V2GCommunicationSession):
         if self.config.use_tls:
             try:
                 supported_protocols.remove(Protocol.DIN_SPEC_70121)
+                logger.warning(
+                    "Removed DIN_SPEC from the list of supported Protocols as "
+                    "TLS is enabled"
+                )
             except ValueError:
                 pass
 
@@ -290,7 +294,7 @@ class CommunicationSessionHandler:
 
         logger.info("Communication session handler started")
 
-        await wait_till_finished(self.list_of_tasks)
+        await wait_for_tasks(self.list_of_tasks)
 
     async def send_sdp(self):
         """

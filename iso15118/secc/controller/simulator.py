@@ -3,15 +3,19 @@ This module contains the code to retrieve (hardware-related) data from the EVSE
 (Electric Vehicle Supply Equipment).
 """
 import logging
+import math
+import pickle
 import time
 from dataclasses import dataclass
 from typing import List, Optional
-from typing_extensions import Self
 
 from aiofile import async_open
 from pydantic import BaseModel, Field
 
-from iso15118.secc.controller.interface import EVSEControllerInterface
+from iso15118.secc.controller.interface import (
+    EVChargeParamsLimits,
+    EVSEControllerInterface,
+)
 from iso15118.shared.messages.datatypes import (
     DCEVSEChargeParameter,
     DCEVSEStatus,
@@ -43,6 +47,7 @@ from iso15118.shared.messages.din_spec.datatypes import (
     SAScheduleTupleEntry as SAScheduleTupleEntryDINSPEC,
 )
 from iso15118.shared.messages.enums import (
+    AuthorizationStatus,
     Contactor,
     EnergyTransferModeEnum,
     IsolationLevel,
@@ -155,7 +160,6 @@ async def read_service_id_parameter_mappings():
         ) from exc
 
 
-
 class SimEVSEController(EVSEControllerInterface):
     """
     A simulated version of an EVSE controller
@@ -164,6 +168,7 @@ class SimEVSEController(EVSEControllerInterface):
     @classmethod
     async def create(cls):
         self = SimEVSEController()
+        await self.zmq.start()
         self.contactor = Contactor.OPENED
         self.ev_data_context = EVDataContext()
         self.v20_service_id_parameter_mapping = (
@@ -178,44 +183,36 @@ class SimEVSEController(EVSEControllerInterface):
     # |             COMMON FUNCTIONS (FOR ALL ENERGY TRANSFER MODES)             |
     # ============================================================================
 
-    def get_evse_id(self, protocol: Protocol) -> str:
+    async def get_evse_id(self, protocol: Protocol) -> str:
         if protocol == Protocol.DIN_SPEC_70121:
-            #  To transform a string-based DIN SPEC 91286 EVSE ID to hexBinary
-            #  representation and vice versa, the following conversion rules shall
-            #  be used for each character and hex digit: '0' <--> 0x0, '1' <--> 0x1,
-            #  '2' <--> 0x2, '3' <--> 0x3, '4' <--> 0x4, '5' <--> 0x5, '6' <--> 0x6,
-            #  '7' <--> 0x7, '8' <--> 0x8, '9' <--> 0x9, '*' <--> 0xA,
-            #  Unused <--> 0xB .. 0xF.
-            # Example: The DIN SPEC 91286 EVSE ID “49*89*6360” is represented
-            # as “0x49 0xA8 0x9A 0x63 0x60”.
-            return "49A89A6360"
-        """Overrides EVSEControllerInterface.get_evse_id()."""
-        return "UK123E1234"
+            return await self.zmq.send_message(state="get_evse_id", message=pickle.dumps({"protocol": "DIN"}))
+        elif protocol == Protocol.ISO_15118_2:
+            return await self.zmq.send_message(state="get_evse_id", message=pickle.dumps({"protocol": "ISO"}))
 
-
-
-
-    def get_supported_energy_transfer_modes(
-        self, protocol: Protocol
+    async def get_supported_energy_transfer_modes(
+            self, protocol: Protocol
     ) -> List[EnergyTransferModeEnum]:
         """Overrides EVSEControllerInterface.get_supported_energy_transfer_modes()."""
         if protocol == Protocol.DIN_SPEC_70121:
-            """
-            For DIN SPEC, only DC_CORE and DC_EXTENDED are supported.
-            The other DC modes DC_COMBO_CORE and DC_DUAL are out of scope for DIN SPEC
-            """
-            dc_extended = EnergyTransferModeEnum.DC_EXTENDED
-            return [dc_extended]
+            logger.info("get supported energy transfer mods DIN_SPEC_70121")
+            return [
+                await self.zmq.send_message(state="get_supported_energy_transfer_modes",
+                                            message=pickle.dumps({"protocol": Protocol.DIN_SPEC_70121}))]
+        elif protocol == Protocol.ISO_15118_2:
+            logger.info("get supported energy transfer mods ISO_15118_2")
+            return [
+                await self.zmq.send_message(state="get_supported_energy_transfer_modes", message=pickle.dumps({
+                    "protocol": Protocol.ISO_15118_2}))]
+        else:
+            return [
+                await self.zmq.send_message(state="get_supported_energy_transfer_modes",
+                                            message=pickle.dumps({
+                                                "protocol": Protocol.ISO_15118_20_AC}))]
 
-        # ac_single_phase = EnergyTransferModeEnum.AC_SINGLE_PHASE_CORE
-        # ac_three_phase = EnergyTransferModeEnum.AC_THREE_PHASE_CORE
-        dc_extended = EnergyTransferModeEnum.DC_EXTENDED
-        return [dc_extended]
-
-    def get_scheduled_se_params(
-        self,
-        selected_energy_service: SelectedEnergyService,
-        schedule_exchange_req: ScheduleExchangeReq,
+    async def get_scheduled_se_params(
+            self,
+            selected_energy_service: SelectedEnergyService,
+            schedule_exchange_req: ScheduleExchangeReq,
     ) -> Optional[ScheduledScheduleExchangeResParams]:
         """Overrides EVSEControllerInterface.get_scheduled_se_params()."""
         charging_power_schedule_entry = PowerScheduleEntry(
@@ -334,8 +331,8 @@ class SimEVSEController(EVSEControllerInterface):
 
         return scheduled_params
 
-    def get_service_parameter_list(
-        self, service_id: int
+    async def get_service_parameter_list(
+            self, service_id: int
     ) -> Optional[ServiceParameterList]:
         """Overrides EVSEControllerInterface.get_service_parameter_list()."""
         if service_id in self.v20_service_id_parameter_mapping.keys():
@@ -348,10 +345,10 @@ class SimEVSEController(EVSEControllerInterface):
 
         return service_parameter_list
 
-    def get_dynamic_se_params(
-        self,
-        selected_energy_service: SelectedEnergyService,
-        schedule_exchange_req: ScheduleExchangeReq,
+    async def get_dynamic_se_params(
+            self,
+            selected_energy_service: SelectedEnergyService,
+            schedule_exchange_req: ScheduleExchangeReq,
     ) -> Optional[DynamicScheduleExchangeResParams]:
         """Overrides EVSEControllerInterface.get_dynamic_se_params()."""
         price_level_schedule_entry = PriceLevelScheduleEntry(
@@ -380,7 +377,7 @@ class SimEVSEController(EVSEControllerInterface):
 
         return dynamic_params
 
-    def get_energy_service_list(self) -> ServiceList:
+    async def get_energy_service_list(self) -> ServiceList:
         """Overrides EVSEControllerInterface.get_energy_service_list()."""
         # AC = 1, DC = 2, AC_BPT = 5, DC_BPT = 6;
         # DC_ACDP = 4 and DC_ADCP_BPT NOT supported
@@ -393,12 +390,12 @@ class SimEVSEController(EVSEControllerInterface):
 
         return service_list
 
-    def is_authorised(self) -> bool:
-        """Overrides EVSEControllerInterface.is_authorised()."""
-        return True
+    async def is_authorized(self) -> AuthorizationStatus:
+        """Overrides EVSEControllerInterface.is_authorized()."""
+        return await self.zmq.send_message(state="is_authorized", message={})
 
-    def get_sa_schedule_list_dinspec(
-        self, max_schedule_entries: Optional[int], departure_time: int = 0
+    async def get_sa_schedule_list_dinspec(
+            self, max_schedule_entries: Optional[int], departure_time: int = 0
     ) -> Optional[List[SAScheduleTupleEntryDINSPEC]]:
         """Overrides EVSEControllerInterface.get_sa_schedule_list_dinspec()."""
         sa_schedule_list: List[SAScheduleTupleEntryDINSPEC] = []
@@ -418,27 +415,49 @@ class SimEVSEController(EVSEControllerInterface):
         sa_schedule_list.append(sa_schedule_tuple_entry)
         return sa_schedule_list
 
-    def get_sa_schedule_list(
-        self, max_schedule_entries: Optional[int], departure_time: int = 0
+    async def get_sa_schedule_list(
+            self,
+            ev_charge_params_limits: EVChargeParamsLimits,
+            max_schedule_entries: Optional[int],
+            departure_time: int = 0,
     ) -> Optional[List[SAScheduleTuple]]:
         """Overrides EVSEControllerInterface.get_sa_schedule_list()."""
         sa_schedule_list: List[SAScheduleTuple] = []
 
+        if departure_time == 0:
+            # [V2G2-304] If no departure_time is provided, the sum of the individual
+            # time intervals shall be greater than or equal to 24 hours.
+            departure_time = 86400
+
         # PMaxSchedule
-        p_max = PVPMax(multiplier=0, value=11000, unit=UnitSymbol.WATT)
-        p_max_schedule_entry = PMaxScheduleEntry(
-            p_max=p_max, time_interval=RelativeTimeInterval(start=0, duration=3600)
+        p_max_1 = PVPMax(multiplier=0, value=11000, unit=UnitSymbol.WATT)
+        p_max_2 = PVPMax(multiplier=0, value=7000, unit=UnitSymbol.WATT)
+        p_max_schedule_entry_1 = PMaxScheduleEntry(
+            p_max=p_max_1, time_interval=RelativeTimeInterval(start=0)
         )
-        p_max_schedule = PMaxSchedule(schedule_entries=[p_max_schedule_entry])
+        p_max_schedule_entry_2 = PMaxScheduleEntry(
+            p_max=p_max_2,
+            time_interval=RelativeTimeInterval(
+                start=math.floor(departure_time / 2),
+                duration=math.ceil(departure_time / 2),
+            ),
+        )
+        p_max_schedule = PMaxSchedule(
+            schedule_entries=[p_max_schedule_entry_1, p_max_schedule_entry_2]
+        )
 
         # SalesTariff
         sales_tariff_entries: List[SalesTariffEntry] = []
         sales_tariff_entry_1 = SalesTariffEntry(
-            e_price_level=1, time_interval=RelativeTimeInterval(start=0)
+            e_price_level=1,
+            time_interval=RelativeTimeInterval(start=0),
         )
         sales_tariff_entry_2 = SalesTariffEntry(
             e_price_level=2,
-            time_interval=RelativeTimeInterval(start=1801, duration=1799),
+            time_interval=RelativeTimeInterval(
+                start=math.floor(departure_time / 2),
+                duration=math.ceil(departure_time / 2),
+            ),
         )
         sales_tariff_entries.append(sales_tariff_entry_1)
         sales_tariff_entries.append(sales_tariff_entry_2)
@@ -469,13 +488,13 @@ class SimEVSEController(EVSEControllerInterface):
 
         return sa_schedule_list
 
-    def get_meter_info_v2(self) -> MeterInfoV2:
+    async def get_meter_info_v2(self) -> MeterInfoV2:
         """Overrides EVSEControllerInterface.get_meter_info_v2()."""
         return MeterInfoV2(
             meter_id="Switch-Meter-123", meter_reading=12345, t_meter=time.time()
         )
 
-    def get_meter_info_v20(self) -> MeterInfoV20:
+    async def get_meter_info_v20(self) -> MeterInfoV20:
         """Overrides EVSEControllerInterface.get_meter_info_v20()."""
         return MeterInfoV20(
             meter_id="Switch-Meter-123",
@@ -483,47 +502,44 @@ class SimEVSEController(EVSEControllerInterface):
             meter_timestamp=time.time(),
         )
 
-    def get_supported_providers(self) -> Optional[List[ProviderID]]:
+    async def get_supported_providers(self) -> Optional[List[ProviderID]]:
         """Overrides EVSEControllerInterface.get_supported_providers()."""
         return None
 
-    def set_hlc_charging(self, is_ongoing: bool) -> None:
+    async def set_hlc_charging(self, is_ongoing: bool) -> None:
         """Overrides EVSEControllerInterface.set_hlc_charging()."""
         pass
 
-    def stop_charger(self) -> None:
-        pass
+    async def stop_charger(self) -> None:
+        self.contactor = await self.zmq.send_message(state='stop_charger', message={})
 
-    def service_renegotiation_supported(self) -> bool:
+    async def service_renegotiation_supported(self) -> bool:
         """Overrides EVSEControllerInterface.service_renegotiation_supported()."""
         return False
 
-    def close_contactor(self):
+    async def close_contactor(self) -> Contactor:
         """Overrides EVSEControllerInterface.close_contactor()."""
-        print("----------------------------------------------------")
         self.contactor = Contactor.CLOSED
+        return await self.zmq.send_message(state='close_contactor', message={})
 
-    def open_contactor(self):
+    async def open_contactor(self) -> Contactor:
         """Overrides EVSEControllerInterface.open_contactor()."""
-        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++")
         self.contactor = Contactor.OPENED
-        
+        return await self.zmq.send_message(state='open_contactor', message={})
 
-    def get_contactor_state(self) -> Contactor:
+    async def get_contactor_state(self) -> Contactor:
         """Overrides EVSEControllerInterface.get_contactor_state()."""
-        return self.contactor
+        return await self.zmq.send_message(state='check_contactor', message={})
 
-    def get_evse_status(self) -> EVSEStatus:
+    async def get_evse_status(self) -> EVSEStatus:
         """Overrides EVSEControllerInterface.get_evse_status()."""
-        return EVSEStatus(
-            notification_max_delay=0, evse_notification=EVSENotificationV20.TERMINATE
-        )
+        return await self.zmq.send_message(state='get_evse_status', message={})
 
     # ============================================================================
     # |                          AC-SPECIFIC FUNCTIONS                           |
     # ============================================================================
 
-    def get_ac_evse_status(self) -> ACEVSEStatus:
+    async def get_ac_evse_status(self) -> ACEVSEStatus:
         """Overrides EVSEControllerInterface.get_ac_evse_status()."""
         return ACEVSEStatus(
             notification_max_delay=0,
@@ -531,7 +547,7 @@ class SimEVSEController(EVSEControllerInterface):
             rcd=False,
         )
 
-    def get_ac_charge_params_v2(self) -> ACEVSEChargeParameter:
+    async def get_ac_charge_params_v2(self) -> ACEVSEChargeParameter:
         """Overrides EVSEControllerInterface.get_ac_evse_charge_parameter()."""
         evse_nominal_voltage = PVEVSENominalVoltage(
             multiplier=0, value=400, unit=UnitSymbol.VOLTAGE
@@ -540,12 +556,12 @@ class SimEVSEController(EVSEControllerInterface):
             multiplier=0, value=32, unit=UnitSymbol.AMPERE
         )
         return ACEVSEChargeParameter(
-            ac_evse_status=self.get_ac_evse_status(),
+            ac_evse_status=await self.get_ac_evse_status(),
             evse_nominal_voltage=evse_nominal_voltage,
             evse_max_current=evse_max_current,
         )
 
-    def get_ac_charge_params_v20(self) -> ACChargeParameterDiscoveryResParams:
+    async def get_ac_charge_params_v20(self) -> ACChargeParameterDiscoveryResParams:
         """Overrides EVSEControllerInterface.get_ac_charge_params_v20()."""
         return ACChargeParameterDiscoveryResParams(
             evse_max_charge_power=RationalNumber(exponent=3, value=11),
@@ -562,9 +578,11 @@ class SimEVSEController(EVSEControllerInterface):
             evse_present_active_power_l3=RationalNumber(exponent=3, value=3),
         )
 
-    def get_ac_bpt_charge_params_v20(self) -> BPTACChargeParameterDiscoveryResParams:
+    async def get_ac_bpt_charge_params_v20(
+            self,
+    ) -> BPTACChargeParameterDiscoveryResParams:
         """Overrides EVSEControllerInterface.get_ac_bpt_charge_params_v20()."""
-        ac_charge_params_v20 = self.get_ac_charge_params_v20().dict()
+        ac_charge_params_v20 = (await self.get_ac_charge_params_v20()).dict()
         return BPTACChargeParameterDiscoveryResParams(
             **ac_charge_params_v20,
             evse_max_discharge_power=RationalNumber(exponent=0, value=3000),
@@ -575,7 +593,9 @@ class SimEVSEController(EVSEControllerInterface):
             evse_min_discharge_power_l3=RationalNumber(exponent=0, value=300),
         )
 
-    def get_scheduled_ac_charge_loop_params(self) -> ScheduledACChargeLoopResParams:
+    async def get_scheduled_ac_charge_loop_params(
+            self,
+    ) -> ScheduledACChargeLoopResParams:
         """Overrides EVControllerInterface.get_scheduled_ac_charge_loop_params()."""
         return ScheduledACChargeLoopResParams(
             evse_present_active_power=RationalNumber(exponent=3, value=3),
@@ -584,8 +604,8 @@ class SimEVSEController(EVSEControllerInterface):
             # Add more optional fields if wanted
         )
 
-    def get_bpt_scheduled_ac_charge_loop_params(
-        self,
+    async def get_bpt_scheduled_ac_charge_loop_params(
+            self,
     ) -> BPTScheduledACChargeLoopResParams:
         """Overrides EVControllerInterface.get_bpt_scheduled_ac_charge_loop_params()."""
         return BPTScheduledACChargeLoopResParams(
@@ -595,7 +615,7 @@ class SimEVSEController(EVSEControllerInterface):
             # Add more optional fields if wanted
         )
 
-    def get_dynamic_ac_charge_loop_params(self) -> DynamicACChargeLoopResParams:
+    async def get_dynamic_ac_charge_loop_params(self) -> DynamicACChargeLoopResParams:
         """Overrides EVControllerInterface.get_dynamic_ac_charge_loop_params()."""
         return DynamicACChargeLoopResParams(
             evse_target_active_power=RationalNumber(exponent=3, value=3),
@@ -604,7 +624,9 @@ class SimEVSEController(EVSEControllerInterface):
             # Add more optional fields if wanted
         )
 
-    def get_bpt_dynamic_ac_charge_loop_params(self) -> BPTDynamicACChargeLoopResParams:
+    async def get_bpt_dynamic_ac_charge_loop_params(
+            self,
+    ) -> BPTDynamicACChargeLoopResParams:
         """Overrides EVControllerInterface.get_bpt_dynamic_ac_charge_loop_params()."""
         return BPTDynamicACChargeLoopResParams(
             evse_target_active_power=RationalNumber(exponent=3, value=3),
@@ -617,85 +639,54 @@ class SimEVSEController(EVSEControllerInterface):
     # |                          DC-SPECIFIC FUNCTIONS                           |
     # ============================================================================
 
-    def get_dc_evse_status(self) -> DCEVSEStatus:
+    async def get_dc_evse_status(self) -> DCEVSEStatus:
         """Overrides EVSEControllerInterface.get_dc_evse_status()."""
-        return DCEVSEStatus(
-            evse_notification=EVSENotificationV2.NONE,
-            notification_max_delay=0,
-            evse_isolation_status=IsolationLevel.VALID,
-            evse_status_code=DCEVSEStatusCode.EVSE_READY,
-        )
+        return await self.zmq.send_message(state='get_dc_evse_status', message={})
 
-    def get_dc_evse_charge_parameter(self) -> DCEVSEChargeParameter:
+    async def get_dc_evse_charge_parameter(self) -> DCEVSEChargeParameter:
         """Overrides EVSEControllerInterface.get_dc_evse_charge_parameter()."""
-        return DCEVSEChargeParameter(
-            dc_evse_status=DCEVSEStatus(
-                notification_max_delay=100,
-                evse_notification=EVSENotificationV2.NONE,
-                evse_isolation_status=IsolationLevel.VALID,
-                evse_status_code=DCEVSEStatusCode.EVSE_READY,
-            ),
-            evse_maximum_power_limit=PVEVSEMaxPowerLimit(
-                multiplier=1, value=230, unit="W"
-            ),
-            evse_maximum_current_limit=PVEVSEMaxCurrentLimit(
-                multiplier=1, value=4, unit="A"
-            ),
-            evse_maximum_voltage_limit=PVEVSEMaxVoltageLimit(
-                multiplier=1, value=4, unit="V"
-            ),
-            evse_minimum_current_limit=PVEVSEMinCurrentLimit(
-                multiplier=1, value=2, unit="A"
-            ),
-            evse_minimum_voltage_limit=PVEVSEMinVoltageLimit(
-                multiplier=1, value=4, unit="V"
-            ),
-            evse_peak_current_ripple=PVEVSEPeakCurrentRipple(
-                multiplier=1, value=4, unit="A"
-            ),
-        )
+        return await self.zmq.send_message(state='get_dc_evse_charge_parameter', message={})
 
-
-
-
-    def get_evse_present_voltage(self) -> PVEVSEPresentVoltage:
+    async def get_evse_present_voltage(self) -> PVEVSEPresentVoltage:
         """Overrides EVSEControllerInterface.get_evse_present_voltage()."""
-        return PVEVSEPresentVoltage(multiplier=0, value=230, unit="V")
+        return await self.zmq.send_message(state='get_evse_present_voltage', message={})
 
-    def get_evse_present_current(self) -> PVEVSEPresentCurrent:
+    async def get_evse_present_current(self) -> PVEVSEPresentCurrent:
         """Overrides EVSEControllerInterface.get_evse_present_current()."""
-        return PVEVSEPresentCurrent(multiplier=0, value=1, unit="A")
+        return await self.zmq.send_message(state='get_evse_present_current', message={})
 
-    def start_cable_check(self):
-        pass
+    async def start_cable_check(self):
+        await self.zmq.send_message(state='start_cable_check', message={})
 
-    def set_precharge(self, voltage: PVEVTargetVoltage, current: PVEVTargetCurrent):
-        pass
-
-    def send_charging_command(
-        self, voltage: PVEVTargetVoltage, current: PVEVTargetCurrent
+    async def set_precharge(
+            self, voltage: PVEVTargetVoltage, current: PVEVTargetCurrent
     ):
-        pass
+        await self.zmq.send_message(state='set_precharge', message={'voltage': voltage, 'current': current})
 
-    def is_evse_current_limit_achieved(self) -> bool:
-        return True
+    async def send_charging_command(
+            self, voltage: PVEVTargetVoltage, current: PVEVTargetCurrent
+    ):
+        await self.zmq.send_message(state='send_charging_command', message={'voltage': voltage, 'current': current})
 
-    def is_evse_voltage_limit_achieved(self) -> bool:
-        return True
+    async def is_evse_current_limit_achieved(self) -> bool:
+        return await self.zmq.send_message('is_evse_current_limit_achieved', pickle.dumps({}))
 
-    def is_evse_power_limit_achieved(self) -> bool:
-        return True
+    async def is_evse_voltage_limit_achieved(self) -> bool:
+        return await self.zmq.send_message('is_evse_voltage_limit_achieved', pickle.dumps({}))
 
-    def get_evse_max_voltage_limit(self) -> PVEVSEMaxVoltageLimit:
-        return PVEVSEMaxVoltageLimit(multiplier=0, value=600, unit="V")
+    async def is_evse_power_limit_achieved(self) -> bool:
+        return await self.zmq.send_message('is_evse_power_limit_achieved', pickle.dumps({}))
 
-    def get_evse_max_current_limit(self) -> PVEVSEMaxCurrentLimit:
-        return PVEVSEMaxCurrentLimit(multiplier=0, value=300, unit="A")
+    async def get_evse_max_voltage_limit(self) -> PVEVSEMaxVoltageLimit:
+        return await self.zmq.send_message('get_evse_max_voltage_limit', pickle.dumps({}))
 
-    def get_evse_max_power_limit(self) -> PVEVSEMaxPowerLimit:
-        return PVEVSEMaxPowerLimit(multiplier=1, value=1000, unit="W")
+    async def get_evse_max_current_limit(self) -> PVEVSEMaxCurrentLimit:
+        return await self.zmq.send_message('get_evse_max_current_limit', pickle.dumps({}))
 
-    def get_dc_charge_params_v20(self) -> DCChargeParameterDiscoveryResParams:
+    async def get_evse_max_power_limit(self) -> PVEVSEMaxPowerLimit:
+        return await self.zmq.send_message('get_evse_max_power_limit', pickle.dumps({}))
+
+    async def get_dc_charge_params_v20(self) -> DCChargeParameterDiscoveryResParams:
         """Overrides EVSEControllerInterface.get_dc_charge_params_v20()."""
         return DCChargeParameterDiscoveryResParams(
             evse_max_charge_power=RationalNumber(exponent=3, value=300),
@@ -707,7 +698,9 @@ class SimEVSEController(EVSEControllerInterface):
             evse_power_ramp_limit=RationalNumber(exponent=0, value=10),
         )
 
-    def get_dc_bpt_charge_params_v20(self) -> BPTDCChargeParameterDiscoveryResParams:
+    async def get_dc_bpt_charge_params_v20(
+            self,
+    ) -> BPTDCChargeParameterDiscoveryResParams:
         """Overrides EVSEControllerInterface.get_dc_bpt_charge_params_v20()."""
         return BPTDCChargeParameterDiscoveryResParams(
             evse_max_charge_power=RationalNumber(exponent=3, value=300),
