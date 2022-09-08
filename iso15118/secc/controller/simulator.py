@@ -3,24 +3,23 @@ This module contains the code to retrieve (hardware-related) data from the EVSE
 (Electric Vehicle Supply Equipment).
 """
 import logging
-import os
+import math
 import pickle
-
-import zmq
-import json
 import time
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import List, Optional
 
 from aiofile import async_open
 from pydantic import BaseModel, Field
 
-from iso15118.secc.controller.interface import EVSEControllerInterface
-from iso15118.secc.states.secc_state import StateSECC
+from iso15118.secc.controller.interface import (
+    EVChargeParamsLimits,
+    EVSEControllerInterface,
+)
 from iso15118.shared.messages.datatypes import (
     DCEVSEChargeParameter,
     DCEVSEStatus,
-    DCEVSEStatusCode, EVSENotification,
+    DCEVSEStatusCode,
 )
 from iso15118.shared.messages.datatypes import EVSENotification as EVSENotificationV2
 from iso15118.shared.messages.datatypes import (
@@ -48,6 +47,7 @@ from iso15118.shared.messages.din_spec.datatypes import (
     SAScheduleTupleEntry as SAScheduleTupleEntryDINSPEC,
 )
 from iso15118.shared.messages.enums import (
+    AuthorizationStatus,
     Contactor,
     EnergyTransferModeEnum,
     IsolationLevel,
@@ -168,6 +168,7 @@ class SimEVSEController(EVSEControllerInterface):
     @classmethod
     async def create(cls):
         self = SimEVSEController()
+        await self.zmq.start()
         self.contactor = Contactor.OPENED
         self.ev_data_context = EVDataContext()
         self.v20_service_id_parameter_mapping = (
@@ -182,50 +183,33 @@ class SimEVSEController(EVSEControllerInterface):
     # |             COMMON FUNCTIONS (FOR ALL ENERGY TRANSFER MODES)             |
     # ============================================================================
 
-    def send_to_controller(self, stage: str, messages: bytes) -> bytes:
-        context = zmq.Context()
-        socket = context.socket(zmq.REQ)
-        if messages is None:
-            messages = ""
-        msg: dict = {
-            'messages': messages,
-            'stage': stage
-        }
-        socket.connect(os.environ.get('ZMQ_FOR_CP_AND_V2G'))
-        socket.send(pickle.dumps(msg))
-        rep = socket.recv()
-        return rep
-
-    # ============================================================================
-    # |                          Dynamic by Controller                           |
-    # ============================================================================
-    # DONE : Implement the following functions By Controller
-    def get_evse_id(self, protocol: Protocol) -> str:
+    async def get_evse_id(self, protocol: Protocol) -> str:
         if protocol == Protocol.DIN_SPEC_70121:
-            return pickle.loads(self.send_to_controller("get_evse_id", pickle.dumps({"protocol": "DIN"})))
+            return await self.zmq.send_message(state="get_evse_id", message=pickle.dumps({"protocol": "DIN"}))
+        elif protocol == Protocol.ISO_15118_2:
+            return await self.zmq.send_message(state="get_evse_id", message=pickle.dumps({"protocol": "ISO"}))
 
-        else:
-            return pickle.loads(self.send_to_controller("get_evse_id", pickle.dumps({"protocol": "ISO15118"})))
-
-    # ============================================================================
-    # |                          Dynamic by Controller                           |
-    # ============================================================================
-    # DONE : Implement the following functions By Controller
-    def get_supported_energy_transfer_modes(
+    async def get_supported_energy_transfer_modes(
             self, protocol: Protocol
     ) -> List[EnergyTransferModeEnum]:
+        """Overrides EVSEControllerInterface.get_supported_energy_transfer_modes()."""
         if protocol == Protocol.DIN_SPEC_70121:
             logger.info("get supported energy transfer mods DIN_SPEC_70121")
-            return pickle.loads(
-                self.send_to_controller("get_supported_energy_transfer_modes", pickle.dumps({"protocol": "DIN"})))
-
+            return [
+                await self.zmq.send_message(state="get_supported_energy_transfer_modes",
+                                            message=pickle.dumps({"protocol": Protocol.DIN_SPEC_70121}))]
+        elif protocol == Protocol.ISO_15118_2:
+            logger.info("get supported energy transfer mods ISO_15118_2")
+            return [
+                await self.zmq.send_message(state="get_supported_energy_transfer_modes", message=pickle.dumps({
+                    "protocol": Protocol.ISO_15118_2}))]
         else:
-            logger.info("get supported energy transfer mods ISO15118")
-            return pickle.loads(
-                self.send_to_controller("get_supported_energy_transfer_modes", pickle.dumps({"protocol": "ISO15118"})))
+            return [
+                await self.zmq.send_message(state="get_supported_energy_transfer_modes",
+                                            message=pickle.dumps({
+                                                "protocol": Protocol.ISO_15118_20_AC}))]
 
-    # TODO : Para #1
-    def get_scheduled_se_params(
+    async def get_scheduled_se_params(
             self,
             selected_energy_service: SelectedEnergyService,
             schedule_exchange_req: ScheduleExchangeReq,
@@ -347,8 +331,7 @@ class SimEVSEController(EVSEControllerInterface):
 
         return scheduled_params
 
-    # TODO : Para #2
-    def get_service_parameter_list(
+    async def get_service_parameter_list(
             self, service_id: int
     ) -> Optional[ServiceParameterList]:
         """Overrides EVSEControllerInterface.get_service_parameter_list()."""
@@ -362,8 +345,7 @@ class SimEVSEController(EVSEControllerInterface):
 
         return service_parameter_list
 
-    # TODO : Para #3
-    def get_dynamic_se_params(
+    async def get_dynamic_se_params(
             self,
             selected_energy_service: SelectedEnergyService,
             schedule_exchange_req: ScheduleExchangeReq,
@@ -395,8 +377,7 @@ class SimEVSEController(EVSEControllerInterface):
 
         return dynamic_params
 
-    # TODO : Para #4
-    def get_energy_service_list(self) -> ServiceList:
+    async def get_energy_service_list(self) -> ServiceList:
         """Overrides EVSEControllerInterface.get_energy_service_list()."""
         # AC = 1, DC = 2, AC_BPT = 5, DC_BPT = 6;
         # DC_ACDP = 4 and DC_ADCP_BPT NOT supported
@@ -409,12 +390,11 @@ class SimEVSEController(EVSEControllerInterface):
 
         return service_list
 
-    def is_authorised(self) -> bool:
-        """Overrides EVSEControllerInterface.is_authorised()."""
-        return pickle.loads(self.send_to_controller("is_authorised", pickle.dumps({"resp": "true"})))
+    async def is_authorized(self) -> AuthorizationStatus:
+        """Overrides EVSEControllerInterface.is_authorized()."""
+        return await self.zmq.send_message(state="is_authorized", message={})
 
-    # TODO : Para #5
-    def get_sa_schedule_list_dinspec(
+    async def get_sa_schedule_list_dinspec(
             self, max_schedule_entries: Optional[int], departure_time: int = 0
     ) -> Optional[List[SAScheduleTupleEntryDINSPEC]]:
         """Overrides EVSEControllerInterface.get_sa_schedule_list_dinspec()."""
@@ -435,28 +415,49 @@ class SimEVSEController(EVSEControllerInterface):
         sa_schedule_list.append(sa_schedule_tuple_entry)
         return sa_schedule_list
 
-    # TODO : Para #6
-    def get_sa_schedule_list(
-            self, max_schedule_entries: Optional[int], departure_time: int = 0
+    async def get_sa_schedule_list(
+            self,
+            ev_charge_params_limits: EVChargeParamsLimits,
+            max_schedule_entries: Optional[int],
+            departure_time: int = 0,
     ) -> Optional[List[SAScheduleTuple]]:
         """Overrides EVSEControllerInterface.get_sa_schedule_list()."""
         sa_schedule_list: List[SAScheduleTuple] = []
 
+        if departure_time == 0:
+            # [V2G2-304] If no departure_time is provided, the sum of the individual
+            # time intervals shall be greater than or equal to 24 hours.
+            departure_time = 86400
+
         # PMaxSchedule
-        p_max = PVPMax(multiplier=0, value=11000, unit=UnitSymbol.WATT)
-        p_max_schedule_entry = PMaxScheduleEntry(
-            p_max=p_max, time_interval=RelativeTimeInterval(start=0, duration=3600)
+        p_max_1 = PVPMax(multiplier=0, value=11000, unit=UnitSymbol.WATT)
+        p_max_2 = PVPMax(multiplier=0, value=7000, unit=UnitSymbol.WATT)
+        p_max_schedule_entry_1 = PMaxScheduleEntry(
+            p_max=p_max_1, time_interval=RelativeTimeInterval(start=0)
         )
-        p_max_schedule = PMaxSchedule(schedule_entries=[p_max_schedule_entry])
+        p_max_schedule_entry_2 = PMaxScheduleEntry(
+            p_max=p_max_2,
+            time_interval=RelativeTimeInterval(
+                start=math.floor(departure_time / 2),
+                duration=math.ceil(departure_time / 2),
+            ),
+        )
+        p_max_schedule = PMaxSchedule(
+            schedule_entries=[p_max_schedule_entry_1, p_max_schedule_entry_2]
+        )
 
         # SalesTariff
         sales_tariff_entries: List[SalesTariffEntry] = []
         sales_tariff_entry_1 = SalesTariffEntry(
-            e_price_level=1, time_interval=RelativeTimeInterval(start=0)
+            e_price_level=1,
+            time_interval=RelativeTimeInterval(start=0),
         )
         sales_tariff_entry_2 = SalesTariffEntry(
             e_price_level=2,
-            time_interval=RelativeTimeInterval(start=1801, duration=1799),
+            time_interval=RelativeTimeInterval(
+                start=math.floor(departure_time / 2),
+                duration=math.ceil(departure_time / 2),
+            ),
         )
         sales_tariff_entries.append(sales_tariff_entry_1)
         sales_tariff_entries.append(sales_tariff_entry_2)
@@ -487,15 +488,13 @@ class SimEVSEController(EVSEControllerInterface):
 
         return sa_schedule_list
 
-    # TODO : Para #7
-    def get_meter_info_v2(self) -> MeterInfoV2:
+    async def get_meter_info_v2(self) -> MeterInfoV2:
         """Overrides EVSEControllerInterface.get_meter_info_v2()."""
         return MeterInfoV2(
             meter_id="Switch-Meter-123", meter_reading=12345, t_meter=time.time()
         )
 
-    # TODO : v20 #1
-    def get_meter_info_v20(self) -> MeterInfoV20:
+    async def get_meter_info_v20(self) -> MeterInfoV20:
         """Overrides EVSEControllerInterface.get_meter_info_v20()."""
         return MeterInfoV20(
             meter_id="Switch-Meter-123",
@@ -503,53 +502,44 @@ class SimEVSEController(EVSEControllerInterface):
             meter_timestamp=time.time(),
         )
 
-    # TODO : Check what is going on here #1
-    def get_supported_providers(self) -> Optional[List[ProviderID]]:
+    async def get_supported_providers(self) -> Optional[List[ProviderID]]:
         """Overrides EVSEControllerInterface.get_supported_providers()."""
         return None
 
-    # TODO : Check what is going on here #2
-    def set_hlc_charging(self, is_ongoing: bool) -> None:
+    async def set_hlc_charging(self, is_ongoing: bool) -> None:
         """Overrides EVSEControllerInterface.set_hlc_charging()."""
         pass
 
-    def stop_charger(self) -> None:
-        pass
+    async def stop_charger(self) -> None:
+        self.contactor = await self.zmq.send_message(state='stop_charger', message={})
 
-    def service_renegotiation_supported(self) -> bool:
+    async def service_renegotiation_supported(self) -> bool:
         """Overrides EVSEControllerInterface.service_renegotiation_supported()."""
         return False
 
-    # Done : it's Chenged to get data from the controller
-    def close_contactor(self):
+    async def close_contactor(self) -> Contactor:
         """Overrides EVSEControllerInterface.close_contactor()."""
+        self.contactor = Contactor.CLOSED
+        return await self.zmq.send_message(state='close_contactor', message={})
 
-        self.contactor = pickle.loads(self.send_to_controller("close_contactor", pickle.dumps({"state": "close"})))
-
-    # Done : it's Chenged to get data from the controller
-    def open_contactor(self):
+    async def open_contactor(self) -> Contactor:
         """Overrides EVSEControllerInterface.open_contactor()."""
+        self.contactor = Contactor.OPENED
+        return await self.zmq.send_message(state='open_contactor', message={})
 
-        self.contactor = pickle.loads(self.send_to_controller("open_contactor", pickle.dumps({"state": "open"})))
-
-    # Done : it's Chenged to get data from the controller
-    def get_contactor_state(self) -> Contactor:
+    async def get_contactor_state(self) -> Contactor:
         """Overrides EVSEControllerInterface.get_contactor_state()."""
-        return pickle.loads(self.send_to_controller("get_contactor_state", pickle.dumps({"state": "open"})))
+        return await self.zmq.send_message(state='check_contactor', message={})
 
-    # changed to get data from controller
-    def get_evse_status(self) -> EVSEStatus:
-        return pickle.loads(self.send_to_controller('get_evse_status', pickle.dumps({'null': 'null'})))
-
-    # Simple dummy function to get states
-    def get_state(self, current: EVSEStatus) -> None:
-        self.send_to_controller('get_state', pickle.dumps({'state': current}))
+    async def get_evse_status(self) -> EVSEStatus:
+        """Overrides EVSEControllerInterface.get_evse_status()."""
+        return await self.zmq.send_message(state='get_evse_status', message={})
 
     # ============================================================================
     # |                          AC-SPECIFIC FUNCTIONS                           |
     # ============================================================================
 
-    def get_ac_evse_status(self) -> ACEVSEStatus:
+    async def get_ac_evse_status(self) -> ACEVSEStatus:
         """Overrides EVSEControllerInterface.get_ac_evse_status()."""
         return ACEVSEStatus(
             notification_max_delay=0,
@@ -557,7 +547,7 @@ class SimEVSEController(EVSEControllerInterface):
             rcd=False,
         )
 
-    def get_ac_charge_params_v2(self) -> ACEVSEChargeParameter:
+    async def get_ac_charge_params_v2(self) -> ACEVSEChargeParameter:
         """Overrides EVSEControllerInterface.get_ac_evse_charge_parameter()."""
         evse_nominal_voltage = PVEVSENominalVoltage(
             multiplier=0, value=400, unit=UnitSymbol.VOLTAGE
@@ -566,12 +556,12 @@ class SimEVSEController(EVSEControllerInterface):
             multiplier=0, value=32, unit=UnitSymbol.AMPERE
         )
         return ACEVSEChargeParameter(
-            ac_evse_status=self.get_ac_evse_status(),
+            ac_evse_status=await self.get_ac_evse_status(),
             evse_nominal_voltage=evse_nominal_voltage,
             evse_max_current=evse_max_current,
         )
 
-    def get_ac_charge_params_v20(self) -> ACChargeParameterDiscoveryResParams:
+    async def get_ac_charge_params_v20(self) -> ACChargeParameterDiscoveryResParams:
         """Overrides EVSEControllerInterface.get_ac_charge_params_v20()."""
         return ACChargeParameterDiscoveryResParams(
             evse_max_charge_power=RationalNumber(exponent=3, value=11),
@@ -588,9 +578,11 @@ class SimEVSEController(EVSEControllerInterface):
             evse_present_active_power_l3=RationalNumber(exponent=3, value=3),
         )
 
-    def get_ac_bpt_charge_params_v20(self) -> BPTACChargeParameterDiscoveryResParams:
+    async def get_ac_bpt_charge_params_v20(
+            self,
+    ) -> BPTACChargeParameterDiscoveryResParams:
         """Overrides EVSEControllerInterface.get_ac_bpt_charge_params_v20()."""
-        ac_charge_params_v20 = self.get_ac_charge_params_v20().dict()
+        ac_charge_params_v20 = (await self.get_ac_charge_params_v20()).dict()
         return BPTACChargeParameterDiscoveryResParams(
             **ac_charge_params_v20,
             evse_max_discharge_power=RationalNumber(exponent=0, value=3000),
@@ -601,7 +593,9 @@ class SimEVSEController(EVSEControllerInterface):
             evse_min_discharge_power_l3=RationalNumber(exponent=0, value=300),
         )
 
-    def get_scheduled_ac_charge_loop_params(self) -> ScheduledACChargeLoopResParams:
+    async def get_scheduled_ac_charge_loop_params(
+            self,
+    ) -> ScheduledACChargeLoopResParams:
         """Overrides EVControllerInterface.get_scheduled_ac_charge_loop_params()."""
         return ScheduledACChargeLoopResParams(
             evse_present_active_power=RationalNumber(exponent=3, value=3),
@@ -610,7 +604,7 @@ class SimEVSEController(EVSEControllerInterface):
             # Add more optional fields if wanted
         )
 
-    def get_bpt_scheduled_ac_charge_loop_params(
+    async def get_bpt_scheduled_ac_charge_loop_params(
             self,
     ) -> BPTScheduledACChargeLoopResParams:
         """Overrides EVControllerInterface.get_bpt_scheduled_ac_charge_loop_params()."""
@@ -621,7 +615,7 @@ class SimEVSEController(EVSEControllerInterface):
             # Add more optional fields if wanted
         )
 
-    def get_dynamic_ac_charge_loop_params(self) -> DynamicACChargeLoopResParams:
+    async def get_dynamic_ac_charge_loop_params(self) -> DynamicACChargeLoopResParams:
         """Overrides EVControllerInterface.get_dynamic_ac_charge_loop_params()."""
         return DynamicACChargeLoopResParams(
             evse_target_active_power=RationalNumber(exponent=3, value=3),
@@ -630,7 +624,9 @@ class SimEVSEController(EVSEControllerInterface):
             # Add more optional fields if wanted
         )
 
-    def get_bpt_dynamic_ac_charge_loop_params(self) -> BPTDynamicACChargeLoopResParams:
+    async def get_bpt_dynamic_ac_charge_loop_params(
+            self,
+    ) -> BPTDynamicACChargeLoopResParams:
         """Overrides EVControllerInterface.get_bpt_dynamic_ac_charge_loop_params()."""
         return BPTDynamicACChargeLoopResParams(
             evse_target_active_power=RationalNumber(exponent=3, value=3),
@@ -643,71 +639,78 @@ class SimEVSEController(EVSEControllerInterface):
     # |                          DC-SPECIFIC FUNCTIONS                           |
     # ============================================================================
 
-    # changed to get_dc_evse_status get from the controller
-    def get_dc_evse_status(self) -> DCEVSEStatus:
+    async def get_dc_evse_status(self) -> DCEVSEStatus:
         """Overrides EVSEControllerInterface.get_dc_evse_status()."""
-        return pickle.loads(self.send_to_controller('get_dc_evse_status', pickle.dumps({'null': 'null'})))
+        return await self.zmq.send_message(state='get_dc_evse_status', message={})
 
-    # changed to get data from the controller
-    def get_dc_evse_charge_parameter(self) -> DCEVSEChargeParameter:
+    async def get_dc_evse_charge_parameter(self) -> DCEVSEChargeParameter:
         """Overrides EVSEControllerInterface.get_dc_evse_charge_parameter()."""
-        return pickle.loads(self.send_to_controller('get_dc_evse_charge_parameter', pickle.dumps({'null': 'null'})))
+        return await self.zmq.send_message(state='get_dc_evse_charge_parameter', message={})
 
-    # changed to get data from the controller
-    def get_evse_present_voltage(self) -> PVEVSEPresentVoltage:
+    async def get_evse_present_voltage(self) -> PVEVSEPresentVoltage:
         """Overrides EVSEControllerInterface.get_evse_present_voltage()."""
-        return pickle.loads(self.send_to_controller('get_evse_present_voltage', pickle.dumps({'null': 'null'})))
+        return await self.zmq.send_message(state='get_evse_present_voltage', message={})
 
-    # changed to get data from the controller
-    def get_evse_present_current(self) -> PVEVSEPresentCurrent:
+    async def get_evse_present_current(self) -> PVEVSEPresentCurrent:
         """Overrides EVSEControllerInterface.get_evse_present_current()."""
-        return pickle.loads(self.send_to_controller('get_evse_present_current', pickle.dumps({'null': 'null'})))
+        return await self.zmq.send_message(state='get_evse_present_current', message={})
 
-    # TODO: implement start_cable_check()
-    def start_cable_check(self):
-        self.send_to_controller('start_cable_check', pickle.dumps({'null': 'null'}))
+    async def start_cable_check(self):
+        await self.zmq.send_message(state='start_cable_check', message={})
 
-    # TODO: implement set_precharge()
-    def set_precharge(self, voltage: PVEVTargetVoltage, current: PVEVTargetCurrent):
-        self.send_to_controller('set_precharge', pickle.dumps({'voltage': voltage, 'current': current}))
-
-    # TODO: implement send_charging_command()
-    def send_charging_command(
+    async def set_precharge(
             self, voltage: PVEVTargetVoltage, current: PVEVTargetCurrent
     ):
-        self.send_to_controller('send_charging_command', pickle.dumps({'voltage': voltage, 'current': current,
-                                                                       'soc': EVDataContext.soc}))
+        await self.zmq.send_message(state='set_precharge', message={'voltage': voltage, 'current': current})
 
-    # changed to get data from the controller
-    def is_evse_current_limit_achieved(self) -> bool:
-        return pickle.loads(self.send_to_controller('is_evse_current_limit_achieved', pickle.dumps({"null": "null"})))
+    async def send_charging_command(
+            self, voltage: PVEVTargetVoltage, current: PVEVTargetCurrent
+    ):
+        await self.zmq.send_message(state='send_charging_command', message={'voltage': voltage, 'current': current})
 
-    # changed to get data from controller
-    def is_evse_voltage_limit_achieved(self) -> bool:
-        return pickle.loads(self.send_to_controller('is_evse_voltage_limit_achieved', pickle.dumps({"null": "null"})))
+    async def is_evse_current_limit_achieved(self) -> bool:
+        return await self.zmq.send_message('is_evse_current_limit_achieved', pickle.dumps({}))
 
-    # changed to get data from controller
-    def is_evse_power_limit_achieved(self) -> bool:
-        return pickle.loads(self.send_to_controller('is_evse_power_limit_achieved', pickle.dumps({"null": "null"})))
+    async def is_evse_voltage_limit_achieved(self) -> bool:
+        return await self.zmq.send_message('is_evse_voltage_limit_achieved', pickle.dumps({}))
 
-    # changed to get data from the controller
-    def get_evse_max_voltage_limit(self) -> PVEVSEMaxVoltageLimit:
-        return pickle.loads(self.send_to_controller('get_evse_max_voltage_limit', pickle.dumps({"null": "null"})))
+    async def is_evse_power_limit_achieved(self) -> bool:
+        return await self.zmq.send_message('is_evse_power_limit_achieved', pickle.dumps({}))
 
-    # changed to get data from the controller
-    def get_evse_max_current_limit(self) -> PVEVSEMaxCurrentLimit:
-        return pickle.loads(self.send_to_controller('get_evse_max_current_limit', pickle.dumps({"null": "null"})))
+    async def get_evse_max_voltage_limit(self) -> PVEVSEMaxVoltageLimit:
+        return await self.zmq.send_message('get_evse_max_voltage_limit', pickle.dumps({}))
 
-    # changed to get data from the controller
-    def get_evse_max_power_limit(self) -> PVEVSEMaxPowerLimit:
-        return pickle.loads(self.send_to_controller('get_evse_max_power_limit', pickle.dumps({"null": "null"})))
+    async def get_evse_max_current_limit(self) -> PVEVSEMaxCurrentLimit:
+        return await self.zmq.send_message('get_evse_max_current_limit', pickle.dumps({}))
 
-    # changed to get data from the controller
-    def get_dc_charge_params_v20(self) -> DCChargeParameterDiscoveryResParams:
+    async def get_evse_max_power_limit(self) -> PVEVSEMaxPowerLimit:
+        return await self.zmq.send_message('get_evse_max_power_limit', pickle.dumps({}))
+
+    async def get_dc_charge_params_v20(self) -> DCChargeParameterDiscoveryResParams:
         """Overrides EVSEControllerInterface.get_dc_charge_params_v20()."""
-        return pickle.loads(self.send_to_controller('get_dc_charge_params_v20', pickle.dumps({"null": "null"})))
+        return DCChargeParameterDiscoveryResParams(
+            evse_max_charge_power=RationalNumber(exponent=3, value=300),
+            evse_min_charge_power=RationalNumber(exponent=0, value=100),
+            evse_max_charge_current=RationalNumber(exponent=0, value=300),
+            evse_min_charge_current=RationalNumber(exponent=0, value=10),
+            evse_max_voltage=RationalNumber(exponent=0, value=1000),
+            evse_min_voltage=RationalNumber(exponent=0, value=10),
+            evse_power_ramp_limit=RationalNumber(exponent=0, value=10),
+        )
 
-    # changed to get data from the controller
-    def get_dc_bpt_charge_params_v20(self) -> BPTDCChargeParameterDiscoveryResParams:
+    async def get_dc_bpt_charge_params_v20(
+            self,
+    ) -> BPTDCChargeParameterDiscoveryResParams:
         """Overrides EVSEControllerInterface.get_dc_bpt_charge_params_v20()."""
-        return pickle.loads(self.send_to_controller('get_dc_bpt_charge_params_v20', pickle.dumps({"null": "null"})))
+        return BPTDCChargeParameterDiscoveryResParams(
+            evse_max_charge_power=RationalNumber(exponent=3, value=300),
+            evse_min_charge_power=RationalNumber(exponent=0, value=100),
+            evse_max_charge_current=RationalNumber(exponent=0, value=300),
+            evse_min_charge_current=RationalNumber(exponent=0, value=10),
+            evse_max_voltage=RationalNumber(exponent=0, value=1000),
+            evse_min_voltage=RationalNumber(exponent=0, value=10),
+            evse_max_discharge_power=RationalNumber(exponent=3, value=11),
+            evse_min_discharge_power=RationalNumber(exponent=3, value=1),
+            evse_max_discharge_current=RationalNumber(exponent=0, value=11),
+            evse_min_discharge_current=RationalNumber(exponent=0, value=0),
+        )

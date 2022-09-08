@@ -7,6 +7,7 @@ receiving, and processing messages during an ISO 15118 communication session.
 
 import asyncio
 import logging
+import pickle
 from abc import ABC, abstractmethod
 from asyncio.streams import StreamReader, StreamWriter
 from typing import List, Optional, Tuple, Type, Union
@@ -48,9 +49,10 @@ from iso15118.shared.messages.iso15118_20.common_types import (
     V2GMessage as V2GMessageV20,
 )
 from iso15118.shared.messages.v2gtp import V2GTPMessage
+from iso15118.shared.messages.zmq_handler import ZMQHandler
 from iso15118.shared.notifications import StopNotification
 from iso15118.shared.states import Pause, State, Terminate
-from iso15118.shared.utils import wait_till_finished
+from iso15118.shared.utils import wait_for_tasks
 
 logger = logging.getLogger(__name__)
 
@@ -75,9 +77,9 @@ class SessionStateMachine(ABC):
     """
 
     def __init__(
-        self,
-        start_state: Type[State],
-        comm_session: Union["EVCCCommunicationSession", "SECCCommunicationSession"],
+            self,
+            start_state: Type[State],
+            comm_session: Union["EVCCCommunicationSession", "SECCCommunicationSession"],
     ):
         """
         The EVCC state machine starts with waiting for the
@@ -115,8 +117,8 @@ class SessionStateMachine(ABC):
         }
 
     def get_exi_ns(
-        self,
-        payload_type: Union[DINPayloadTypes, ISOV2PayloadTypes, ISOV20PayloadTypes],
+            self,
+            payload_type: Union[DINPayloadTypes, ISOV2PayloadTypes, ISOV20PayloadTypes],
     ) -> str:
         """
         Provides the right protocol namespace for the EXI decoder.
@@ -143,7 +145,7 @@ class SessionStateMachine(ABC):
         else:
             return Namespace.ISO_V20_COMMON_MSG
 
-    def process_message(self, message: bytes):
+    async def process_message(self, message: bytes):
         """
         The following steps are conducted in this state machine's general
         process_message() function:
@@ -213,7 +215,7 @@ class SessionStateMachine(ABC):
         # Step 3
         try:
             logger.info(f"{str(decoded_message)} received")
-            self.current_state.process_message(decoded_message)
+            await self.current_state.process_message(decoded_message)
         except MessageProcessingError as exc:
             logger.exception(
                 f"{exc.__class__.__name__} while processing " f"{exc.message_name}"
@@ -230,8 +232,8 @@ class SessionStateMachine(ABC):
             raise exc
 
         if (
-            self.current_state.next_v2gtp_msg is None
-            and self.current_state.next_state is not Terminate
+                self.current_state.next_v2gtp_msg is None
+                and self.current_state.next_state is not Terminate
         ):
             raise FaultyStateImplementationError(
                 "Field 'next_v2gtp_msg' is "
@@ -267,11 +269,11 @@ class V2GCommunicationSession(SessionStateMachine):
     # pylint: disable=too-many-instance-attributes
 
     def __init__(
-        self,
-        transport: Tuple[StreamReader, StreamWriter],
-        start_state: Type["State"],
-        session_handler_queue: asyncio.Queue,
-        comm_session: Union["EVCCCommunicationSession", "SECCCommunicationSession"],
+            self,
+            transport: Tuple[StreamReader, StreamWriter],
+            start_state: Type["State"],
+            session_handler_queue: asyncio.Queue,
+            comm_session: Union["EVCCCommunicationSession", "SECCCommunicationSession"],
     ):
         """
         Initialise the communication session with EVCC or SECC specific
@@ -321,7 +323,7 @@ class V2GCommunicationSession(SessionStateMachine):
         self.stop_reason: Optional[StopNotification] = None
         self.last_message_sent: Optional[V2GTPMessage] = None
         self._started: bool = True
-
+        self.zmq = ZMQHandler()
         logger.info("Starting a new communication session")
         SessionStateMachine.__init__(self, start_state, comm_session)
 
@@ -338,9 +340,12 @@ class V2GCommunicationSession(SessionStateMachine):
 
         try:
             self._started = True
-            await wait_till_finished(tasks)
+            await wait_for_tasks(tasks)
         finally:
             self._started = False
+            # await self.zmq.send_message(state="finally",
+            #                             message=pickle.dumps("Finally done"),
+            #                             )
 
     @abstractmethod
     def save_session_info(self):
@@ -458,7 +463,7 @@ class V2GCommunicationSession(SessionStateMachine):
             try:
                 # This will create the values needed for the next state, such as
                 # next_state, next_v2gtp_message, next_message_payload_type etc.
-                self.process_message(message)
+                await self.process_message(message)
 
                 if self.current_state.next_v2gtp_msg:
                     # next_v2gtp_msg would not be set only if the next state is either
@@ -475,9 +480,9 @@ class V2GCommunicationSession(SessionStateMachine):
                 timeout = self.current_state.next_msg_timeout
                 self.go_to_next_state()
             except (
-                MessageProcessingError,
-                FaultyStateImplementationError,
-                EXIDecodingError,
+                    MessageProcessingError,
+                    FaultyStateImplementationError,
+                    EXIDecodingError,
             ) as exc:
                 message_name = ""
                 additional_info = ""

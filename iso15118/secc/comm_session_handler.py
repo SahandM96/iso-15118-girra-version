@@ -12,11 +12,10 @@ at once, i.e. creating, storing, and deleting those sessions as needed.
 
 import asyncio
 import logging
+import pickle
 import socket
-import time
 from asyncio.streams import StreamReader, StreamWriter
 from typing import Dict, List, Optional, Tuple, Union
-from iso15118.cp_thread.cp_value_metric import value_metric
 
 from iso15118.secc.controller.interface import EVSEControllerInterface
 from iso15118.secc.failed_responses import (
@@ -27,6 +26,7 @@ from iso15118.secc.failed_responses import (
 from iso15118.secc.secc_settings import Config
 from iso15118.secc.transport.tcp_server import TCPServer
 from iso15118.secc.transport.udp_server import UDPServer
+from iso15118.shared.messages.zmq_handler import ZMQHandler
 from iso15118.shared.comm_session import V2GCommunicationSession
 from iso15118.shared.exceptions import InvalidSDPRequestError, InvalidV2GTPMessageError
 from iso15118.shared.exi_codec import EXI
@@ -54,7 +54,8 @@ from iso15118.shared.notifications import (
     TCPClientNotification,
     UDPPacketNotification,
 )
-from iso15118.shared.utils import cancel_task, wait_till_finished
+from iso15118.shared.utils import cancel_task, wait_for_tasks
+
 logger = logging.getLogger(__name__)
 
 
@@ -161,6 +162,7 @@ class CommunicationSessionHandler:
         self.tcp_server = None
         self.config = config
         self.evse_controller = evse_controller
+        self.zmq = ZMQHandler()
 
         # Set the selected EXI codec implementation
         EXI().set_exi_codec(codec)
@@ -181,26 +183,22 @@ class CommunicationSessionHandler:
         Therefore, we need to create a separate async method to be our
         constructor.
         """
-        try:
 
-            self.udp_server = UDPServer(self._rcv_queue, self.config.iface)
-            self.tcp_server = TCPServer(self._rcv_queue, self.config.iface)
+        self.udp_server = UDPServer(self._rcv_queue, self.config.iface)
+        self.tcp_server = TCPServer(self._rcv_queue, self.config.iface)
 
-            self.list_of_tasks = [
-               self.get_from_rcv_queue(self._rcv_queue),
-               self.udp_server.start(),
-               self.tcp_server.start_tls(),
-            ]
+        self.list_of_tasks = [
+            self.get_from_rcv_queue(self._rcv_queue),
+            self.udp_server.start(),
+            self.tcp_server.start_tls(),
+        ]
 
-            if not self.config.enforce_tls:
-                self.list_of_tasks.append(self.tcp_server.start_no_tls())
+        if not self.config.enforce_tls:
+            self.list_of_tasks.append(self.tcp_server.start_no_tls())
 
-            logger.info("Communication session handler started")
+        logger.info("Communication session handler started")
 
-            await wait_till_finished(self.list_of_tasks)
-        except Exception as exc:
-            logger.info(exc)
-            raise
+        await wait_for_tasks(self.list_of_tasks)
 
     async def get_from_rcv_queue(self, queue: asyncio.Queue):
         """
@@ -227,27 +225,31 @@ class CommunicationSessionHandler:
                         "TCP client connected, client address is "
                         f"{notification.ip_address}."
                     )
-                    if value_metric():
-                        try:
-                            comm_session, task = self.comm_sessions[notification.ip_address]
-                            comm_session.resume()
-                        except KeyError:
-                            comm_session = SECCCommunicationSession(
-                                notification.transport,
-                                self._rcv_queue,
-                                self.config,
-                                self.evse_controller,
-                            )
 
-                        task = asyncio.create_task(
-                            comm_session.start(
-                                Timeouts.V2G_EVCC_COMMUNICATION_SETUP_TIMEOUT
-                            )
+                    try:
+                        comm_session, task = self.comm_sessions[notification.ip_address]
+                        comm_session.resume()
+                    except KeyError:
+                        comm_session = SECCCommunicationSession(
+                            notification.transport,
+                            self._rcv_queue,
+                            self.config,
+                            self.evse_controller,
                         )
-                        self.comm_sessions[notification.ip_address] = (comm_session, task)
+
+                    task = asyncio.create_task(
+                        comm_session.start(
+                            Timeouts.V2G_EVCC_COMMUNICATION_SETUP_TIMEOUT
+                        )
+                    )
+                    self.comm_sessions[notification.ip_address] = (comm_session, task)
                 elif isinstance(notification, StopNotification):
                     try:
+                        await self.zmq.send_message(state="finally",
+                                                    message=pickle.dumps("Finally done"),
+                                                    )
                         await cancel_task(
+
                             self.comm_sessions[notification.peer_ip_address][1]
                         )
                         del self.comm_sessions[notification.peer_ip_address]
@@ -263,6 +265,7 @@ class CommunicationSessionHandler:
             # TODO: What about an except here?
             finally:
                 queue.task_done()
+
 
     async def process_incoming_udp_packet(self, message: UDPPacketNotification):
         """

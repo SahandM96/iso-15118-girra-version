@@ -2,6 +2,10 @@
 import pickle
 import logging
 import zmq
+from zmq.asyncio import Context, Poller
+
+url = 'tcp://127.0.0.1:5555'
+
 from iso15118.cp_thread.cp_value_metric import get_cp_value
 from threading import Thread
 
@@ -19,9 +23,9 @@ def zmq_thead_message_stage_handler(msg="") -> bytes:
 
 def zmq_thread():
     while True:
-        context = zmq.Context()
-        socket = context.socket(zmq.REQ)
-        socket.connect("tcp://localhost:5555")
+        ctx = Context.instance()
+        socket = ctx.socket(zmq.REQ)
+        socket.bind("tcp://localhost:5555")
         return socket
 
 

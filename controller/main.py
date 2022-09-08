@@ -1,12 +1,8 @@
 """ imports in here """
 import logging
-import math
-import time
 import os
-from enum import IntEnum
-from typing import List, Optional
+from typing import Optional
 import pickle
-from urllib import response
 import zmq
 from dotenv import load_dotenv
 import can
@@ -29,42 +25,32 @@ logger = logging.getLogger(__name__)
 
 context = zmq.Context()
 socket = context.socket(zmq.REP)
-socket.bind("tcp://*:5555")
+socket.bind(os.environ.get('ZMQ_FOR_CP_AND_V2G'))
 InterfaceBus = can.Bus(
     interface='socketcan',
     channel='vcan0'
 )
-canCon = zmq.Context()
-canSocket = canCon.socket(zmq.REQ)
-canSocket.connect("tcp://localhost:5556")
 
 
 def open_contactor(param: dict) -> bytes:
-    contactor_status = open(os.environ.get('CONTACTOR_STATUS_CODE'), 'w')
-    logger.info("Contactor is opened")
-    contactor_status.write("1")
-    contactor_status.close()
-    return pickle.dumps(Contactor.OPENED)
+    logger.info("Contactor is {}".format(Contactor.OPENED))
+    pickle.dump(Contactor.OPENED, open(os.environ.get('CONTACTOR_STATUS_CODE'), 'wb'))
+    return pickle.dumps(Contactor.OPENED, fix_imports=True)
 
 
 def close_contactor(param: dict) -> bytes:
-    contactor_status = open(os.environ.get('CONTACTOR_STATUS_CODE'), 'w')
-    logger.info("Contactor is closed")
-    contactor_status.write("0")
-    contactor_status.close()
-    return pickle.dumps(Contactor.CLOSED)
+    logger.info("Contactor is {}".format(Contactor.CLOSED))
+    pickle.dump(Contactor.CLOSED, open(os.environ.get('CONTACTOR_STATUS_CODE'), 'wb'))
+    return pickle.dumps(Contactor.CLOSED, fix_imports=True)
 
 
 def get_contactor_state(param: dict) -> bytes:
-    contactor_status = open(os.environ.get('CONTACTOR_STATUS_CODE'), 'r')
-    status = contactor_status.read()
-    contactor_status.close()
-    logger.info("Contactor is {}".format(status))
+    status = pickle.load(open(os.environ.get('CONTACTOR_STATUS_CODE'), 'rb'))
     # TODO: change it to be really status
-    # if status == 1:
-    #     return pickle.dumps(Contactor.CLOSED)
-    # return pickle.dumps(Contactor.OPENED)
-    return pickle.dumps(Contactor.CLOSED)
+    if status == Contactor.CLOSED:
+        return pickle.dumps(Contactor.CLOSED, fix_imports=True)
+    return pickle.dumps(Contactor.OPENED, fix_imports=True)
+    # return pickle.dumps(Contactor.CLOSED)
 
 
 # send charge command

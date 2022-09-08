@@ -1,5 +1,4 @@
 import logging
-import time
 from optparse import Option
 from typing import Optional
 
@@ -15,10 +14,10 @@ logger = logging.getLogger(__name__)
 
 class SECCHandler(CommunicationSessionHandler):
     def __init__(
-            self,
-            exi_codec: IEXICodec,
-            evse_controller: EVSEControllerInterface,
-            env_path: Optional[str] = None,
+        self,
+        exi_codec: IEXICodec,
+        evse_controller: EVSEControllerInterface,
+        env_path: Optional[str] = None,
     ):
         config = Config()
         config.load_envs(env_path)
@@ -37,4 +36,3 @@ class SECCHandler(CommunicationSessionHandler):
             # Re-raise so the process ends with a non-zero exit code and the
             # watchdog can restart the service
             raise
-
