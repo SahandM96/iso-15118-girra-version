@@ -122,6 +122,7 @@ from iso15118.shared.security import (
 )
 from iso15118.shared.states import State, Terminate
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -174,12 +175,13 @@ class SessionSetup(StateSECC):
                 f"New session ID {session_id} assigned"
             )
             self.response_code = ResponseCode.OK_NEW_SESSION_ESTABLISHED
-
+        self.comm_session.evse_controller.zmq.set_state("SessionSetup")
         session_setup_res = SessionSetupRes(
             response_code=self.response_code,
             evse_id=await self.comm_session.evse_controller.get_evse_id(
-                Protocol.ISO_15118_2
+                Protocol.ISO_15118_2,
             ),
+
             evse_timestamp=time.time(),
         )
 
@@ -244,7 +246,7 @@ class ServiceDiscovery(StateSECC):
         if msg.body.payment_service_selection_req:
             await PaymentServiceSelection(self.comm_session).process_message(message)
             return
-
+        self.comm_session.evse_controller.zmq.set_state("ServiceDiscovery")
         service_discovery_req: ServiceDiscoveryReq = msg.body.service_discovery_req
         service_discovery_res = await self.get_services(
             service_discovery_req.service_category
@@ -390,7 +392,7 @@ class ServiceDetail(StateSECC):
             return
 
         service_detail_req: ServiceDetailReq = msg.body.service_detail_req
-
+        self.comm_session.evse_controller.zmq.set_state("ServiceDetail")
         parameter_set: List[ParameterSet] = []
 
         # Certificate installation service
@@ -491,6 +493,9 @@ class PaymentServiceSelection(StateSECC):
         # was received. Thus, if the above body messages do not check out,
         # means that we are in presence of a `PaymentServiceSelectionReq`
         # maessage
+
+        self.comm_session.evse_controller.zmq.set_state("PaymentServiceSelection")
+
         service_selection_req: PaymentServiceSelectionReq = (
             msg.body.payment_service_selection_req
         )
@@ -585,6 +590,7 @@ class CertificateInstallation(StateSECC):
         cert_install_req: CertificateInstallationReq = (
             msg.body.certificate_installation_req
         )
+        self.comm_session.evse_controller.zmq.set_state("CertificateInstallation")
 
         if not verify_signature(
             signature=msg.header.signature,
@@ -751,7 +757,7 @@ class PaymentDetails(StateSECC):
             return
 
         payment_details_req: PaymentDetailsReq = msg.body.payment_details_req
-
+        self.comm_session.evse_controller.zmq.set_state("PaymentDetails")
         try:
             leaf_cert = payment_details_req.cert_chain.certificate
             sub_ca_certs = payment_details_req.cert_chain.sub_certificates.certificates
@@ -863,6 +869,8 @@ class Authorization(StateSECC):
 
         authorization_req: AuthorizationReq = msg.body.authorization_req
 
+        self.comm_session.evse_controller.zmq.set_state("Authorization")
+
         if self.comm_session.selected_auth_option == AuthEnum.PNC_V2:
             if not self.comm_session.contract_cert_chain:
                 self.stop_state_machine(
@@ -969,6 +977,7 @@ class ChargeParameterDiscovery(StateSECC):
         charge_params_req: ChargeParameterDiscoveryReq = (
             msg.body.charge_parameter_discovery_req
         )
+        self.comm_session.evse_controller.zmq.set_state("ChargeParameterDiscovery")
 
         if charge_params_req.requested_energy_mode not in (
             await self.comm_session.evse_controller.get_supported_energy_transfer_modes(
@@ -1231,6 +1240,7 @@ class PowerDelivery(StateSECC):
             return
 
         power_delivery_req: PowerDeliveryReq = msg.body.power_delivery_req
+        self.comm_session.evse_controller.zmq.set_state("PowerDelivery")
 
         if power_delivery_req.sa_schedule_tuple_id not in [
             schedule.sa_schedule_tuple_id
@@ -1424,6 +1434,7 @@ class MeteringReceipt(StateSECC):
             return
 
         metering_receipt_req: MeteringReceiptReq = msg.body.metering_receipt_req
+        self.comm_session.evse_controller.zmq.set_state("MeteringReceipt")
 
         if not self.comm_session.contract_cert_chain:
             stop_reason = (
@@ -1508,6 +1519,7 @@ class SessionStop(StateSECC):
         if not msg:
             return
         session_status = msg.body.session_stop_req.charging_session.lower()
+        self.comm_session.evse_controller.zmq.set_state("SessionStop")
         self.comm_session.stop_reason = StopNotification(
             True,
             f"EV Requested to {session_status} the communication session",
@@ -1580,6 +1592,8 @@ class ChargingStatus(StateSECC):
         if msg.body.metering_receipt_req:
             await MeteringReceipt(self.comm_session).process_message(message)
             return
+
+        self.comm_session.evse_controller.zmq.set_state("ChargingStatus")
 
         # We don't care about signed meter values from the EVCC, but if you
         # do, then set receipt_required to True and set the field meter_info
@@ -1660,6 +1674,7 @@ class CableCheck(StateSECC):
             return
 
         cable_check_req: CableCheckReq = msg.body.cable_check_req
+        self.comm_session.evse_controller.zmq.set_state("CableCheck")
         if cable_check_req.dc_ev_status.ev_error_code != DCEVErrorCode.NO_ERROR:
             self.stop_state_machine(
                 f"{cable_check_req.dc_ev_status} "
@@ -1764,6 +1779,7 @@ class PreCharge(StateSECC):
             return
 
         precharge_req: PreChargeReq = msg.body.pre_charge_req
+        self.comm_session.evse_controller.zmq.set_state("PreCharge")
 
         if precharge_req.dc_ev_status.ev_error_code != DCEVErrorCode.NO_ERROR:
             self.stop_state_machine(
@@ -1855,6 +1871,7 @@ class CurrentDemand(StateSECC):
             return
 
         current_demand_req: CurrentDemandReq = msg.body.current_demand_req
+        self.comm_session.evse_controller.zmq.set_state("CurrentDemand")
 
         self.comm_session.evse_controller.ev_data_context.soc = (
             current_demand_req.dc_ev_status.ev_ress_soc
@@ -1954,6 +1971,8 @@ class WeldingDetection(StateSECC):
         if msg.body.session_stop_req:
             await SessionStop(self.comm_session).process_message(message)
             return
+
+        self.comm_session.evse_controller.zmq.set_state("WeldingDetection")
 
         welding_detection_res = WeldingDetectionRes(
             # todo llr: java exi codec throws error with this message.

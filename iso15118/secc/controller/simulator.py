@@ -9,7 +9,6 @@ import time
 from dataclasses import dataclass
 from typing import List, Optional
 
-from aiofile import async_open
 from pydantic import BaseModel, Field
 
 from iso15118.secc.controller.interface import (
@@ -140,24 +139,24 @@ class V20ServiceParamMapping(BaseModel):
 # This method is added to help read the service to parameter
 # mapping (json format) from file. The key is in the dictionary is
 # enum value of the energy transfer mode and value is the service parameter
-async def read_service_id_parameter_mappings():
-    try:
-        async with async_open(V20_EVSE_SERVICES_CONFIG, "r") as v20_service_config:
-            try:
-                json_mapping = await v20_service_config.read()
-                v20_service_parameter_mapping = V20ServiceParamMapping.parse_raw(
-                    json_mapping
-                )
-                return v20_service_parameter_mapping.service_id_parameter_set_mapping
-            except ValueError as exc:
-                raise ValueError(
-                    f"Error reading 15118-20 service parameters settings file"
-                    f" at {V20_EVSE_SERVICES_CONFIG}"
-                ) from exc
-    except (FileNotFoundError, IOError) as exc:
-        raise FileNotFoundError(
-            f"V20 config not found at {V20_EVSE_SERVICES_CONFIG}"
-        ) from exc
+# async def read_service_id_parameter_mappings():
+#     try:
+#         async with async_open(V20_EVSE_SERVICES_CONFIG, "r") as v20_service_config:
+#             try:
+#                 json_mapping = await v20_service_config.read()
+#                 v20_service_parameter_mapping = V20ServiceParamMapping.parse_raw(
+#                     json_mapping
+#                 )
+#                 return v20_service_parameter_mapping.service_id_parameter_set_mapping
+#             except ValueError as exc:
+#                 raise ValueError(
+#                     f"Error reading 15118-20 service parameters settings file"
+#                     f" at {V20_EVSE_SERVICES_CONFIG}"
+#                 ) from exc
+#     except (FileNotFoundError, IOError) as exc:
+#         raise FileNotFoundError(
+#             f"V20 config not found at {V20_EVSE_SERVICES_CONFIG}"
+#         ) from exc
 
 
 class SimEVSEController(EVSEControllerInterface):
@@ -171,9 +170,9 @@ class SimEVSEController(EVSEControllerInterface):
         await self.zmq.start()
         self.contactor = Contactor.OPENED
         self.ev_data_context = EVDataContext()
-        self.v20_service_id_parameter_mapping = (
-            await read_service_id_parameter_mappings()
-        )
+        # self.v20_service_id_parameter_mapping = (
+        #     await read_service_id_parameter_mappings()
+        # )
         return self
 
     def reset_ev_data_context(self):
@@ -185,7 +184,8 @@ class SimEVSEController(EVSEControllerInterface):
 
     async def get_evse_id(self, protocol: Protocol) -> str:
         if protocol == Protocol.DIN_SPEC_70121:
-            return await self.zmq.send_message(state="get_evse_id", message=pickle.dumps({"protocol": "DIN"}))
+            return await self.zmq.send_message(message=pickle.dumps({ "command":"get_evse_id",
+                                                                      "payload":pickle.dumps({"protocol": "DIN"})}))
         elif protocol == Protocol.ISO_15118_2:
             return await self.zmq.send_message(state="get_evse_id", message=pickle.dumps({"protocol": "ISO"}))
 
