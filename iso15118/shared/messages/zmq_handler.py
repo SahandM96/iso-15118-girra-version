@@ -36,7 +36,8 @@ class ZMQHandler:
 
     async def start(self) -> None:
         try:
-            res = await self.send_message(state='starting', message=pickle.dumps('connecting'), protocol='v2g_message')
+            res = await self.send_message(state='initializing',
+                                          message=message_maker("starting"), protocol='v2g_message')
             logger.info(f"Connected to secc {res}")
         except Exception as exc:
             logger.error(f"ZMQHandler terminated: {exc}")
