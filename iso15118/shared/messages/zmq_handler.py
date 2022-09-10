@@ -48,6 +48,8 @@ class ZMQHandler:
                 await self.socket.send(pickle.dumps(
                     {'state': self.get_state(), 'message': message, 'protocol': protocol})
                 )
+                resp: bytes = await self.socket.recv()
+                return pickle.loads(resp)
             else:
                 await self.socket.send(pickle.dumps(
                     {'state': self.get_state(), 'message': pickle.dumps({'null': message}), 'protocol': protocol}))
