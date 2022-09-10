@@ -56,6 +56,8 @@ from iso15118.shared.notifications import (
 )
 from iso15118.shared.utils import cancel_task, wait_for_tasks
 
+from iso15118.shared.messages.zmq_handler import message_maker
+
 logger = logging.getLogger(__name__)
 
 
@@ -245,9 +247,7 @@ class CommunicationSessionHandler:
                     self.comm_sessions[notification.ip_address] = (comm_session, task)
                 elif isinstance(notification, StopNotification):
                     try:
-                        await self.zmq.send_message(state="finally",
-                                                    message=pickle.dumps("Finally done"),
-                                                    )
+                        await self.zmq.send_message(message_maker("finally",pickle.dumps("Finally done")))
                         await cancel_task(
 
                             self.comm_sessions[notification.peer_ip_address][1]
