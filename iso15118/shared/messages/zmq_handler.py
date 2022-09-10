@@ -7,7 +7,7 @@ import zmq.asyncio
 logger = logging.getLogger(__name__)
 
 
-def message_maker(command: str, payload: bytes) -> bytes:
+def message_maker(command: str, payload: bytes = pickle.dumps({})) -> bytes:
     return pickle.dumps(
         {
             "command": command,
