@@ -117,6 +117,7 @@ from iso15118.shared.messages.iso15118_20.dc import (
     DCChargeParameterDiscoveryResParams,
 )
 from iso15118.shared.settings import V20_EVSE_SERVICES_CONFIG
+from iso15118.shared.messages.zmq_handler import message_maker
 
 logger = logging.getLogger(__name__)
 
@@ -184,10 +185,10 @@ class SimEVSEController(EVSEControllerInterface):
 
     async def get_evse_id(self, protocol: Protocol) -> str:
         if protocol == Protocol.DIN_SPEC_70121:
-            return await self.zmq.send_message(message=pickle.dumps({ "command":"get_evse_id",
-                                                                      "payload":pickle.dumps({"protocol": "DIN"})}))
+            return await self.zmq.send_message(
+                message_maker("get_evse_id", pickle.dumps({"protocol": "DIN"})))
         elif protocol == Protocol.ISO_15118_2:
-            return await self.zmq.send_message(state="get_evse_id", message=pickle.dumps({"protocol": "ISO"}))
+            return await self.zmq.send_message(message_maker("get_evse_id", pickle.dumps({"protocol": "ISO"})))
 
     async def get_supported_energy_transfer_modes(
             self, protocol: Protocol
@@ -196,18 +197,18 @@ class SimEVSEController(EVSEControllerInterface):
         if protocol == Protocol.DIN_SPEC_70121:
             logger.info("get supported energy transfer mods DIN_SPEC_70121")
             return [
-                await self.zmq.send_message(state="get_supported_energy_transfer_modes",
-                                            message=pickle.dumps({"protocol": Protocol.DIN_SPEC_70121}))]
+                await self.zmq.send_message(message_maker("get_supported_energy_transfer_modes",
+                                                          pickle.dumps({"protocol": Protocol.DIN_SPEC_70121})))]
         elif protocol == Protocol.ISO_15118_2:
             logger.info("get supported energy transfer mods ISO_15118_2")
             return [
-                await self.zmq.send_message(state="get_supported_energy_transfer_modes", message=pickle.dumps({
-                    "protocol": Protocol.ISO_15118_2}))]
+                await self.zmq.send_message(message_maker("get_supported_energy_transfer_modes", pickle.dumps({
+                    "protocol": Protocol.ISO_15118_2})))]
         else:
             return [
-                await self.zmq.send_message(state="get_supported_energy_transfer_modes",
-                                            message=pickle.dumps({
-                                                "protocol": Protocol.ISO_15118_20_AC}))]
+                await self.zmq.send_message(message_maker("get_supported_energy_transfer_modes",
+                                                          pickle.dumps({
+                                                              "protocol": Protocol.ISO_15118_20_AC})))]
 
     async def get_scheduled_se_params(
             self,
@@ -392,7 +393,7 @@ class SimEVSEController(EVSEControllerInterface):
 
     async def is_authorized(self) -> AuthorizationStatus:
         """Overrides EVSEControllerInterface.is_authorized()."""
-        return await self.zmq.send_message(state="is_authorized", message={})
+        return await self.zmq.send_message(message_maker("is_authorized", pickle.dumps({})))
 
     async def get_sa_schedule_list_dinspec(
             self, max_schedule_entries: Optional[int], departure_time: int = 0
@@ -511,7 +512,7 @@ class SimEVSEController(EVSEControllerInterface):
         pass
 
     async def stop_charger(self) -> None:
-        self.contactor = await self.zmq.send_message(state='stop_charger', message={})
+        self.contactor = await self.zmq.send_message(message_maker('stop_charger', pickle.dumps({})))
 
     async def service_renegotiation_supported(self) -> bool:
         """Overrides EVSEControllerInterface.service_renegotiation_supported()."""
@@ -520,20 +521,20 @@ class SimEVSEController(EVSEControllerInterface):
     async def close_contactor(self) -> Contactor:
         """Overrides EVSEControllerInterface.close_contactor()."""
         self.contactor = Contactor.CLOSED
-        return await self.zmq.send_message(state='close_contactor', message={})
+        return await self.zmq.send_message(message_maker('close_contactor', pickle.dumps({})))
 
     async def open_contactor(self) -> Contactor:
         """Overrides EVSEControllerInterface.open_contactor()."""
         self.contactor = Contactor.OPENED
-        return await self.zmq.send_message(state='open_contactor', message={})
+        return await self.zmq.send_message(message_maker('open_contactor', pickle.dumps({})))
 
     async def get_contactor_state(self) -> Contactor:
         """Overrides EVSEControllerInterface.get_contactor_state()."""
-        return await self.zmq.send_message(state='check_contactor', message={})
+        return await self.zmq.send_message(message_maker('check_contactor', pickle.dumps({})))
 
     async def get_evse_status(self) -> EVSEStatus:
         """Overrides EVSEControllerInterface.get_evse_status()."""
-        return await self.zmq.send_message(state='get_evse_status', message={})
+        return await self.zmq.send_message(message_maker('get_evse_status',pickle.dumps({})))
 
     # ============================================================================
     # |                          AC-SPECIFIC FUNCTIONS                           |
@@ -641,50 +642,53 @@ class SimEVSEController(EVSEControllerInterface):
 
     async def get_dc_evse_status(self) -> DCEVSEStatus:
         """Overrides EVSEControllerInterface.get_dc_evse_status()."""
-        return await self.zmq.send_message(state='get_dc_evse_status', message={})
+        return await self.zmq.send_message(message_maker('get_dc_evse_status'))
 
     async def get_dc_evse_charge_parameter(self) -> DCEVSEChargeParameter:
         """Overrides EVSEControllerInterface.get_dc_evse_charge_parameter()."""
-        return await self.zmq.send_message(state='get_dc_evse_charge_parameter', message={})
+        return await self.zmq.send_message(message_maker('get_dc_evse_charge_parameter'))
 
     async def get_evse_present_voltage(self) -> PVEVSEPresentVoltage:
         """Overrides EVSEControllerInterface.get_evse_present_voltage()."""
-        return await self.zmq.send_message(state='get_evse_present_voltage', message={})
+        return await self.zmq.send_message(message_maker('get_evse_present_voltage'))
 
     async def get_evse_present_current(self) -> PVEVSEPresentCurrent:
         """Overrides EVSEControllerInterface.get_evse_present_current()."""
-        return await self.zmq.send_message(state='get_evse_present_current', message={})
+        return await self.zmq.send_message(message_maker('get_evse_present_current'))
 
     async def start_cable_check(self):
-        await self.zmq.send_message(state='start_cable_check', message={})
+        await self.zmq.send_message(message_maker('start_cable_check'))
 
     async def set_precharge(
             self, voltage: PVEVTargetVoltage, current: PVEVTargetCurrent
     ):
-        await self.zmq.send_message(state='set_precharge', message={'voltage': voltage, 'current': current})
+        await self.zmq.send_message(message_maker('set_precharge',
+                                                  pickle.dumps({'voltage': voltage, 'current': current})))
 
     async def send_charging_command(
             self, voltage: PVEVTargetVoltage, current: PVEVTargetCurrent
     ):
-        await self.zmq.send_message(state='send_charging_command', message={'voltage': voltage, 'current': current})
+        await self.zmq.send_message(message_maker('send_charging_command',
+                                                  pickle.dumps({'voltage': voltage, 'current': current})))
 
     async def is_evse_current_limit_achieved(self) -> bool:
-        return await self.zmq.send_message('is_evse_current_limit_achieved', pickle.dumps({}))
+        return await self.zmq.send_message(
+            message_maker('is_evse_current_limit_achieved'))
 
     async def is_evse_voltage_limit_achieved(self) -> bool:
-        return await self.zmq.send_message('is_evse_voltage_limit_achieved', pickle.dumps({}))
+        return await self.zmq.send_message(message_maker('is_evse_voltage_limit_achieved'))
 
     async def is_evse_power_limit_achieved(self) -> bool:
-        return await self.zmq.send_message('is_evse_power_limit_achieved', pickle.dumps({}))
+        return await self.zmq.send_message(message_maker('is_evse_power_limit_achieved'))
 
     async def get_evse_max_voltage_limit(self) -> PVEVSEMaxVoltageLimit:
-        return await self.zmq.send_message('get_evse_max_voltage_limit', pickle.dumps({}))
+        return await self.zmq.send_message(message_maker('get_evse_max_voltage_limit'))
 
     async def get_evse_max_current_limit(self) -> PVEVSEMaxCurrentLimit:
-        return await self.zmq.send_message('get_evse_max_current_limit', pickle.dumps({}))
+        return await self.zmq.send_message(message_maker('get_evse_max_current_limit'))
 
     async def get_evse_max_power_limit(self) -> PVEVSEMaxPowerLimit:
-        return await self.zmq.send_message('get_evse_max_power_limit', pickle.dumps({}))
+        return await self.zmq.send_message(message_maker('get_evse_max_power_limit'))
 
     async def get_dc_charge_params_v20(self) -> DCChargeParameterDiscoveryResParams:
         """Overrides EVSEControllerInterface.get_dc_charge_params_v20()."""

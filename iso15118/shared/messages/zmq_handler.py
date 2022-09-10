@@ -7,6 +7,15 @@ import zmq.asyncio
 logger = logging.getLogger(__name__)
 
 
+def message_maker(command: str, payload: bytes = pickle.dumps({})) -> bytes:
+    return pickle.dumps(
+        {
+            "command": command,
+            "payload": payload
+        }
+    )
+
+
 class ZMQHandler:
 
     def __init__(self) -> None:
@@ -25,7 +34,6 @@ class ZMQHandler:
     def set_state(self, state: str):
         self.state = state
 
-
     async def start(self) -> None:
         try:
             res = await self.send_message(state='starting', message=pickle.dumps('connecting'), protocol='v2g_message')
@@ -34,18 +42,21 @@ class ZMQHandler:
             logger.error(f"ZMQHandler terminated: {exc}")
             raise
 
-    async def send_message(self, state: str, message: bytes, protocol: str = 'v2g_message') -> any:
-        logger.info(f"STATEEEEEEEEEEEEEEEEEEEEEEEEE:{self.get_state()}")
+    async def send_message(self, message: bytes, state: str = "state", protocol: str = 'v2g_message') -> any:
         try:
-            logger.info("Sending message to secc on state : {}".format(state))
             if isinstance(message, bytes):
-                await self.socket.send(pickle.dumps({'state': self.get_state(), 'message': message, 'protocol': protocol}))
+                await self.socket.send(pickle.dumps(
+                    {'state': self.get_state(), 'message': message, 'protocol': protocol})
+                )
+                resp: bytes = await self.socket.recv()
+                return pickle.loads(resp)
             else:
-                await self.socket.send(pickle.dumps({'state': self.get_state(), 'message': pickle.dumps({'null': message}),
-                                                     'protocol': protocol}))
-
-            resp: bytes = await self.socket.recv()
-            return pickle.loads(resp)
+                await self.socket.send(pickle.dumps(
+                    {'state': self.get_state(), 'message': pickle.dumps({'null': message}), 'protocol': protocol}))
+                resp: bytes = await self.socket.recv()
+                return pickle.loads(resp)
         except Exception as exc:
             logger.error(f"ZMQHandler terminated: {exc}")
             raise
+        finally:
+            logger.info(f"Sending message to secc on state : {state}")
